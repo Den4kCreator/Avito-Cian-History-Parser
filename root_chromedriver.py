@@ -17,7 +17,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 class RootChromeDriver:
     ''' object for settings a chrome driver '''
     def __init__(self):
-        appdata_path = getenv('LOCALAPPDATA55')
+        appdata_path = getenv('LOCALAPPDATA')
         if appdata_path:
             self.profile_path = appdata_path + r'\Google\Chrome\User Data\ProfileDevTools'
             if not path_exists(self.profile_path):

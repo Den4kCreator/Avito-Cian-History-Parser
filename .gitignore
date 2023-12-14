@@ -2,8 +2,11 @@
 __pycache__
 tests
 phone_num_imgs
+build
+dist
 env
 
+main (old with comments).py
 cfg.py
 execution.log
 avito_history.csv
