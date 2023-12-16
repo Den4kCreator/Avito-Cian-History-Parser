@@ -41,7 +41,7 @@ class RootChromeDriver:
         self.opts.add_argument("--disable-gpu")
         self.opts.add_argument("--disable-blink-features=AutomationControlled")
         self.opts.add_argument("--disable-extensions")
-        # self.opts.add_argument('--headless')
+        self.opts.add_argument('--headless')
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
