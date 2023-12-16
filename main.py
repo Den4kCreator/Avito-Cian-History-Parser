@@ -10,8 +10,9 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import urllib.request
-import threading
-
+# import threading
+import asyncio
+from concurrent.futures.thread import ThreadPoolExecutor
 
 from hcaptcha_solver import hcaptcha_solver
 from selenium.webdriver.common.by import By
@@ -35,8 +36,19 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     encoding='utf-8')
 
+# collect pages on avito and cian
+MAX_PAGES_COUNT = 10  # from 1 to N
+
 # create errors container
 ERRORS_CONTAINER = []
+
+# count parallel browsers
+NUM_PARALLEL_BROWSERS = 6
+NUM_PARALLEL_BROWSERS = NUM_PARALLEL_BROWSERS if NUM_PARALLEL_BROWSERS <= MAX_PAGES_COUNT else MAX_PAGES_COUNT
+
+# cerate executor for async parsing
+THREAD_POOL_EXECUTOR = ThreadPoolExecutor(max_workers=NUM_PARALLEL_BROWSERS) 
+ASYNCIO_EVENT_LOOP = asyncio.get_event_loop()
 
 
 def send_email_msg(body_msg, subject_msg, send_from, password, send_to):
@@ -72,6 +84,36 @@ def cian_ad_parse(ad_url, driver, collected_ads):
     phones = ''
     
     try:
+        # accept cookis for click button phone
+        # try:
+        #     WebDriverWait(driver, timeout=5).until(
+        #         EC.presence_of_element_located((By.CLASS_NAME, "_25d45facb5--container--zRDqi"))
+        #     ).click()
+        # except Exception as ex:
+        #     pass
+        # else:
+        #     logging.info('accept cookies')
+        
+        # # close div which blocked phone button
+        # try:
+        #     WebDriverWait(driver, timeout=3).until(
+        #         EC.presence_of_element_located((By.XPATH, "//div[@class='_25d45facb5--content--UaWj0']"))
+        #     ).click()
+        # except Exception as ex:
+        #     pass
+        # else:
+        #     logging.info('close div which blocked phone button')
+        
+        # close dialog
+        try:
+            WebDriverWait(driver, timeout=3).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@role="dialog"]//span[text()="Принять"]'))
+            ).click()
+        except Exception as ex:
+            pass
+        else:
+            logging.info('close dialog')
+
         WebDriverWait(driver, timeout=10, poll_frequency=1).until(
             EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="contacts-button"]'))
         ).click()
@@ -91,11 +133,7 @@ def cian_ad_parse(ad_url, driver, collected_ads):
     id_ = ad_url.split('suburban/')[1].replace('/', '')
     type_company = soup.find('div', attrs={'data-name': 'AuthorAside'}).text.strip()
     price = soup.find('div', attrs={'data-testid': 'price-amount'}).text.strip().replace('\xa0', ' ')
-    # price = soup.find('span', {'data-mark': 'MainPrice'}).text.strip().replace('\xa0', ' ')
-    # //div[@data-mark="Shutter"]//div[@data-id="content"]/span
     additional_address = soup.find('div', attrs={'data-id': 'content'}).text.replace('\n', ' | ')
-    # additional_address = ' | '.join(
-    #     [e.find('a').text.strip() + ' ' + e.find('div').text.strip() for e in soup.find_all('div', class_='_93444fe79c--container--w7txv')]).replace('\n', '|')
     main_address = soup.find('div', attrs={'data-name': 'AddressContainer'}).text.replace('\n', ' | ')
     address = 'DESCRIPTION ADDRESS --> | ' + additional_address + ' | MAIN ADDRESS --> | ' + main_address
 
@@ -105,9 +143,8 @@ def cian_ad_parse(ad_url, driver, collected_ads):
     sewarage = 'Не указано'
     water = 'Не указано'
     area = 'Не указано'
-    # request and collect this data
-    # driver.get(link)
-    # sleep(3)
+
+
     date_created_text = driver.find_element(By.XPATH, '//div[@data-testid="metadata-added-date"]').text
     date_created = date_created_text.split('Обновлено:')
     if len(date_created) > 1:
@@ -167,65 +204,69 @@ def cian_ad_parse(ad_url, driver, collected_ads):
 
 def cian_parse_ads(page_n, page_url, collected_ads):
     try:
-        with RootChromeDriver()._init_local_driver() as driver:
-            # collect current (first) page and replace to 2 3 4 5...
-            print(f'[*]Get - {page_url}')
-            driver.get(page_url)
+        driver = RootChromeDriver()._init_local_driver()
+        # collect current (first) page and replace to 2 3 4 5...
+        msg = f'[*]Get - {page_url}'
+        print(msg)
+        logging.info(msg)
+
+        driver.get(page_url)
     
-            # scroll down
-            body = WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.TAG_NAME, 'body')))
-            body.send_keys(Keys.END)
-            body.send_keys(Keys.END)
+        # scroll down
+        body = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.TAG_NAME, 'body')))
+        body.send_keys(Keys.END)
+        body.send_keys(Keys.END)
     
-            logging.info(f'Scroll page to down - {page_url}')
+        logging.info(f'Scroll page to down - {page_url}')
     
-            # check that page is exists
-            try:
-                if page_n > 1:
-                    WebDriverWait(driver, 3, poll_frequency=1).until(
-                        EC.url_contains(f'&p={page_n}')
-                    )
-            except TimeoutException:
-                logging.info(f'get timeout exception for wait page (in the end) - {page_url}')
-                return
-            
-            # start page parse 
-            logging.info(f'start cian parse ads on page - {page_url}')
-        
-            # wait ads loading
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
-            )
-        
-            # get ad urls
-            ads_urls = set()
-            ads_urls_elems = WebDriverWait(driver, timeout=15).until(
-                EC.presence_of_all_elements_located(
-                    (By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]//article[@data-name="CardComponent"]//a[@class="_93444fe79c--link--VtWj6"]'))
-            )
-            for e in ads_urls_elems:
-                ads_urls.add(
-                    e.get_attribute('href')
+        # check that page is exists
+        try:
+            if page_n > 1:
+                WebDriverWait(driver, 3, poll_frequency=1).until(
+                    EC.url_contains(f'&p={page_n}')
                 )
-            # convert to list
-            ads_urls = list(ads_urls)
-            logging.info(f'collect ads urls - {len(ads_urls)} - ({page_url})')
+        except TimeoutException:
+            logging.info(f'get timeout exception for wait page (in the end) - {page_url}')
+            return
         
-            # parse ads urls
-            for ad_url in ads_urls:
-                cian_ad_parse(ad_url, driver, collected_ads)
+        # start page parse 
+        logging.info(f'start cian parse ads on page - {page_url}')
+        
+        # wait ads loading
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
+        )
+        
+        # get ad urls
+        ads_urls = set()
+        ads_urls_elems = WebDriverWait(driver, timeout=15).until(
+            EC.presence_of_all_elements_located(
+                (By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]//article[@data-name="CardComponent"]//a[@class="_93444fe79c--link--VtWj6"]'))
+        )
+        for e in ads_urls_elems:
+            ads_urls.add(
+                e.get_attribute('href')
+            )
+        # convert to list
+        ads_urls = list(ads_urls)
+        logging.info(f'collect ads urls - {len(ads_urls)} - ({page_url})')
+
+        # parse ads urls
+        for ad_url in ads_urls:
+            cian_ad_parse(ad_url, driver, collected_ads)
 
     except Exception as ex:
         # handle error
         ex_msg = f'ERROR PARSE CIAN ADS FUNCTION (FOR EVERY PAGE), page_url - [{page_url}], exception - [{ex}]'
         handle_global_error(ex_msg)
+    finally:
         # quit from driver
         driver.close()
         driver.quit()
 
 
-def cian_parse(region_id: str):
+def cian_parse(region_id: str, executor, loop):
     logging.info(f'cian parse start function, region_id - {region_id}')
 
     region_id = str(region_id)
@@ -235,26 +276,31 @@ def cian_parse(region_id: str):
     # init page urls with page_nums
     page_urls = []
 
+    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+        tasks = []
+        for page_n, page_url in zip(page_n_list, page_url_list):
+            tasks.append(
+                loop.run_in_executor(executor, cian_parse_ads, page_n, page_url, collected_ads)
+            )
+        await asyncio.gather(*tasks)
+
+
+    # generate urls
     page_url = f'https://www.cian.ru/cat.php?deal_type=sale&engine_version=2&object_type%5B0%5D=3&offer_type=suburban&p=1&region={region_id}'
-    for page_n in range(1, 1_000):
+    for page_n in range(1, MAX_PAGES_COUNT):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
         page_urls.append(
             [page_url, page_n])
-
-
-    for page_urls_group in split_list(page_urls, 8):
-        for page_url, page_n in page_urls_group:
-            threads = []
-            # for url in urls:
-            thread = threading.Thread(target=cian_parse_ads, args=(page_n, page_url, collected_ads))
-            threads.append(thread)
-            thread.start()
+    
+    # process_pages(page_urls, collected_ads)
+    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+        # unpack group and send to loop
+        page_n_list = [group[1] for group in page_urls_group]
+        page_url_list = [group[0] for group in page_urls_group]
         
-        for thread in threads:
-            thread.join()
-            # collect ads for every page
-            # cian_parse_ads(page_n, page_url, collected_ads)
+        loop.run_until_complete(
+            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
     logging.info(f'success end parsing for cian, region - {region_id}')
     return collected_ads
@@ -282,12 +328,21 @@ def avito_driver_get_handler(driver, url):
         WebDriverWait(driver, timeout=10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
         )
+
+        logging.info(f'captcha was solved success, continue parsing... ({url})')
         return
 
 
 def avito_ad_parse(driver, ad_url, collected_ads):
     # load page
     avito_driver_get_handler(driver, ad_url)
+    # driver.get(ad_url)
+
+    # wait load ad elem
+    # wait load price elem of ad
+    WebDriverWait(driver=driver, timeout=6).until(
+        EC.presence_of_element_located((By.XPATH, "//span[@class='style-price-value-main-TIg6u']/span[@itemprop='price']"))
+    )
     
     # render html, get soup
     html = driver.page_source
@@ -296,10 +351,6 @@ def avito_ad_parse(driver, ad_url, collected_ads):
     ad_price = soup.find('span', class_='style-price-value-main-TIg6u').find('span', attrs={'itemprop': 'price'}).text.strip().replace('\xa0', ' ')
     ad_name = soup.find('div', class_='style-titleWrapper-Hmr_5').find('h1').text.strip().replace('\xa0', ' ')
     ad_unit_price = soup.find('div', class_='style-item-price-sub-price-_5RUD').text.strip().replace('\xa0', ' ')
-
-    # ad_price = driver.find_element(By.XPATH, '//span[@class="style-price-value-main-TIg6u"]//span[@itemprop="price"]').text
-    # ad_name = driver.find_element(By.XPATH, '//div[@class="style-titleWrapper-Hmr_5"]//h1').text
-    # ad_unit_price = driver.find_element(By.XPATH, '//div[@class="style-item-price-sub-price-_5RUD"]').text
 
     if 'залог' in ad_unit_price:
         ad_unit_price = 'Нет удельной цены'
@@ -318,18 +369,6 @@ def avito_ad_parse(driver, ad_url, collected_ads):
     ad_today_views = soup.find('span', attrs={'data-marker': 'item-view/today-views'}).text
     ad_today_views = int(re.search('\d+', ad_today_views)[0])
     
-
-    # ad_address = driver.find_element(By.XPATH, '//div[@itemprop="address"]').text.strip().replace('\n', '|')
-    # ad_id = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-id"]').text
-    # ad_id = re.search('\d+', ad_id)[0]
-    # ad_company_type = driver.find_element(By.XPATH, '//div[@data-marker="seller-info/label"]').text
-    # ad_publ_time = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-date"]').text
-    # ad_publ_time = avito_convert_date(ad_publ_time)
-    # ad_total_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/total-views"]').text
-    # ad_total_views = int(re.search('\d+', ad_total_views)[0])
-    # ad_today_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/today-views"]').text
-    # ad_today_views = int(re.search('\d+', ad_today_views)[0])
-
     # собираем инфу с категорий снизу
     ad_area_found_list = [e.text.replace('Площадь:', '').strip().replace('\xa0', '') for e in 
                           soup.find_all('li', class_='params-paramsList__item-appQw') if 'Площадь:' in e.text]
@@ -353,7 +392,7 @@ def avito_ad_parse(driver, ad_url, collected_ads):
         button_phone = WebDriverWait(driver, timeout=5, poll_frequency=1).until(
             EC.presence_of_element_located((By.XPATH, '//button[@data-marker="item-phone-button/card"]'))
         )
-        sleep(2)
+        # sleep(2)
         ActionChains(driver).move_to_element(button_phone).click(button_phone).perform()
 
         # Скачиваем img с номерами телефонов и кладем в папку "phone_num_imgs", проверив, есть ли она
@@ -361,15 +400,19 @@ def avito_ad_parse(driver, ad_url, collected_ads):
         # num_img_url = soup.find('img', attrs={'data-marker': 'phone-popup/phone-image'}).get("src")
         if not os.path.exists("phone_num_imgs"):
             os.mkdir("phone_num_imgs")
-        urllib.request.urlretrieve(num_img_url, f"phone_num_imgs/phone_img.png")
+        
+        img_path = f"phone_num_imgs/phone_img_{ad_id}.png"
+        urllib.request.urlretrieve(num_img_url, img_path)
 
         # Открываем картинку с помощью PIL
-        img = Image.open(f"phone_num_imgs/phone_img.png")
-
-        # Распознаем текст телефона с картинки с помощью tesseract
-        # custom_config = r"--oem3 --psm13"  # Настройки для tesseract, эти по сути автоматические https://help.ubuntu.ru/wiki/tesseractб, oem3 это это режим работы движка, он и так по умолчанию 3, но вот остальные режимы: 0 = Original Tesseract only. 1 = Neural nets LSTM only. 2 = Tesseract + LSTM. 3 = Default, based on what is available.
-        phone_num = pytesseract.image_to_string(img).replace("\n", "")
-        os.remove(f"phone_num_imgs/phone_img.png")
+        with Image.open(img_path) as img:
+            # Распознаем текст телефона с картинки с помощью tesseract
+            # custom_config = r"--oem3 --psm13"  # Настройки для tesseract, эти по сути автоматические https://help.ubuntu.ru/wiki/tesseractб, oem3 это это режим работы движка, он и так по умолчанию 3, но вот остальные режимы: 0 = Original Tesseract only. 1 = Neural nets LSTM only. 2 = Tesseract + LSTM. 3 = Default, based on what is available.
+            phone_num = pytesseract.image_to_string(img).replace("\n", "")
+        
+        # удаляем картинку
+        if os.path.exists(img_path):
+            os.remove(img_path)
     except Exception as ex:
         print(ex)
         phone_num = "Не получилось выгрузить номер телефона"
@@ -401,61 +444,74 @@ def avito_ad_parse(driver, ad_url, collected_ads):
 def avito_ads_parse(ads_urls, driver, collected_ads):
     for ad_url in ads_urls:
         avito_ad_parse(driver, ad_url, collected_ads)
-        
 
-def avito_parse(region_id):
+
+def avito_parse(region_id, loop, executor):
     logging.info(f'start avito parsing, region_id: {region_id}')
 
     # start function
     collected_ads = []    # container ads
 
+    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+        tasks = []
+        for page_n, page_url in zip(page_n_list, page_url_list):
+            tasks.append(
+                loop.run_in_executor(executor, process_page, page_n, page_url, collected_ads)
+            )
+        await asyncio.gather(*tasks)
+        
+
     def process_page(page_n, page_url, collected_ads):
         try:
-            with RootChromeDriver()._init_local_driver() as driver:
-                print(f'[*]Get - {page_url}')
-                avito_driver_get_handler(driver, page_url)
+            driver = RootChromeDriver()._init_local_driver()
+            msg = f'[*]Get - {page_url}'
+            print(msg)
+            logging.info(msg)
+
+            avito_driver_get_handler(driver, page_url)
         
-                logging.info(f'success get and handling page on captcha - {page_url}')
+            logging.info(f'success get and handling page on captcha - {page_url}')
         
-                # scroll down
-                body = WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.TAG_NAME, 'body')))
-                body.send_keys(Keys.END)
-                body.send_keys(Keys.END)
+            # scroll down
+            body = WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, 'body')))
+            body.send_keys(Keys.END)
+            body.send_keys(Keys.END)
         
-                logging.info(f'Scroll page to down - [{page_url}]')
-                
-                # check that page is exists
-                try:
-                    if page_n > 1:
-                        WebDriverWait(driver, 3, poll_frequency=1).until(
-                            EC.url_contains(f'&p={page_n}')
-                        )
-                except TimeoutException:
-                    logging.info('get timeout exception for wait page (in the end)')
-                    return
-    
-                # collect and wait ads for load ads_urls
-                ads_count = len(WebDriverWait(driver, timeout=20).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
-                ))
-                
-                # collect ad urls
-                ads_urls = list(
-                    set(driver.find_element(By.XPATH, f'//div[@data-marker="item"][{ad_num}]//a[@data-marker="item-title"]').get_attribute("href") for ad_num in range(1, ads_count)))
+            logging.info(f'Scroll page to down - [{page_url}]')
             
-                # logging.info(f'collect ads_count - {ads_count}')
-                logging.info(f'collected urls count - {len(ads_urls)} - ({page_url})')
+            # check that page is exists
+            try:
+                if page_n > 1:
+                    WebDriverWait(driver, 3, poll_frequency=1).until(
+                        EC.url_contains(f'&p={page_n}')
+                    )
+            except TimeoutException:
+                logging.info('get timeout exception for wait page (in the end)')
+                return
+    
+            # collect and wait ads for load ads_urls
+            ads_count = len(WebDriverWait(driver, timeout=20).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
+            ))
+            
+            # collect ad urls
+            ads_urls = list(
+                set(driver.find_element(By.XPATH, f'//div[@data-marker="item"][{ad_num}]//a[@data-marker="item-title"]').get_attribute("href") for ad_num in range(1, ads_count)))
+            
+            # logging.info(f'collect ads_count - {ads_count}')
+            logging.info(f'collected urls count - {len(ads_urls)} - ({page_url})')
         
-                try:
-                    avito_ads_parse(ads_urls, driver, collected_ads)
-                except Exception as ex:
-                    ex_msg = f'ERROR avito_ads_parse FUNCTION - {ex} ({page_url})'
-                    handle_global_error(ex_msg)
+            try:
+                avito_ads_parse(ads_urls, driver, collected_ads)
+            except Exception as ex:
+                ex_msg = f'ERROR avito_ads_parse FUNCTION - {ex} ({page_url})'
+                handle_global_error(ex_msg)
         except Exception as ex:
             # handle error
             ex_msg = f'ERROR PARSE AVITO ADS FUNCTION (FOR EVERY PAGE), page_url - [{page_url}], exception - [{ex}]'
             handle_global_error(ex_msg)
+        finally:
             # quit from driver
             driver.close()
             driver.quit()
@@ -464,25 +520,23 @@ def avito_parse(region_id):
     page_urls = []
 
     page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
-    for page_n in range(1, 1_000):
+    for page_n in range(1, MAX_PAGES_COUNT):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
         page_urls.append(
             [page_url, page_n])
     
-    # process pages
-    for page_urls_group in split_list(page_urls, 8):
-        for page_url, page_n in page_urls_group:
-            threads = []
-            # for url in urls:
-            thread = threading.Thread(target=process_page, args=(page_n, page_url, collected_ads))
-            threads.append(thread)
-            thread.start()
+    # start process urls (pages)
         
-        for thread in threads:
-            thread.join()
+    # process_pages(page_urls, collected_ads)
+    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+        # unpack group and send to loop
+        page_n_list = [group[1] for group in page_urls_group]
+        page_url_list = [group[0] for group in page_urls_group]
+        
+        loop.run_until_complete(
+            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
-    
     logging.info(f'success end parsing for avito, region {region_id}')
     return collected_ads
 
@@ -764,26 +818,18 @@ def main():
 
         # -- AVITO --
         avito_ads = []
-        avito_ads.extend(avito_parse(AVITO_REGIONS['Москва и МО'])) 
+        avito_ads.extend(
+            avito_parse(
+                AVITO_REGIONS['Москва и МО'], 
+                loop=ASYNCIO_EVENT_LOOP, 
+                executor=THREAD_POOL_EXECUTOR
+            )
+        )
         logging.info(f'Found avito ads count - {len(avito_ads)}')
 
         # update prices and views history  - avito
         history_csv_updater(avito_ads, AVITO_HISTORY_CSV_FN)
         total_csv_updater(avito_ads, AVITO_TOTAL_CSV_FN)
-
-        # -- CIAN --
-        # create cian parsed for moskow and MO
-        cian_ads = []
-        
-        # extend cian parsed for Москва
-        cian_ads.extend(cian_parse(CIAN_REGIONS['Москва']))
-        # extend cian parsed for MO
-        cian_ads.extend(cian_parse(CIAN_REGIONS['Московская область']))
-        logging.info(f'Found cian ads count - {len(cian_ads)}')
-
-        # update prices and views history - cian
-        total_csv_updater(cian_ads, CIAN_TOTAL_CSV_FN)
-        history_csv_updater(cian_ads, CIAN_HISTORY_CSV_FN)
         
 
         # send msg about errors
@@ -796,8 +842,8 @@ def main():
                     send_to=MAIL_SEND_TO, body_msg=errors_container_str
                 )
             except Exception as ex:
-                msg = '\nERROR SENDING EMAIL MESSAGE!\n'
-                logging.info(msg)
+                msg = f'ERROR SENDING EMAIL MESSAGE! - {ex}'
+                logging.error(msg)
             else:
                 logging.info('Sending email was completed')
                 if send_email_errors:

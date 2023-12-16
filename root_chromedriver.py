@@ -41,7 +41,6 @@ class RootChromeDriver:
         self.opts.add_argument("--disable-gpu")
         self.opts.add_argument("--disable-blink-features=AutomationControlled")
         self.opts.add_argument("--disable-extensions")
-        self.opts.add_argument('--headless')
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
@@ -97,7 +96,8 @@ class RootChromeDriver:
 
 
     def _init_local_driver(self):
-        # self.opts.experimental_options('prefs', {'intl.accept_languages': 'en,en_US'})
+        self.opts.add_experimental_option('prefs', {'intl.accept_languages': 'en,en_US'})
+        # self.opts.add_experimental_option('prefs', {'intl.accept_languages': 'ru,ru_RU'})
 
         # if self.profile_path:
         #     self.opts.add_argument(f"--user-data-dir={self.profile_path}")
