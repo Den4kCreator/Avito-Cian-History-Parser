@@ -1,7 +1,7 @@
-import re
-from os import getenv
+# import re
+# from os import getenv
 # from os import listdir
-from os.path import exists as path_exists
+# from os.path import exists as path_exists
 # import subprocess
 # from time import sleep
 
@@ -17,16 +17,16 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 class RootChromeDriver:
     ''' object for settings a chrome driver '''
     def __init__(self):
-        appdata_path = getenv('LOCALAPPDATA')
-        if appdata_path:
-            self.profile_path = appdata_path + r'\Google\Chrome\User Data\ProfileDevTools'
-            if not path_exists(self.profile_path):
-                print('[!] ProfileDevTools doesn\'t exists, will be create new')
-            else:
-                print('[*] PrifleDevTools path was found')
-        else:
-            print('[*] PrifleDevTools path was not build')
-            self.profile_path = ''
+        # appdata_path = getenv('LOCALAPPDATA')
+        # if appdata_path:
+        #     self.profile_path = appdata_path + r'\Google\Chrome\User Data\ProfileDevTools'
+        #     if not path_exists(self.profile_path):
+        #         print('[!] ProfileDevTools doesn\'t exists, will be create new')
+        #     else:
+        #         print('[*] ProfileDevTools path was found (save the data after driver exit (cookie, passwords, history, profile info...))')
+        # else:
+        #     print('[*] ProfileDevTools path was build in the temp folder')
+        #     self.profile_path = ''
         self.opts = ChromeOptions()
         self._set_my_config()   # setting opts
         
@@ -41,7 +41,7 @@ class RootChromeDriver:
         self.opts.add_argument("--disable-gpu")
         self.opts.add_argument("--disable-blink-features=AutomationControlled")
         self.opts.add_argument("--disable-extensions")
-        self.opts.add_argument('--headless')
+        # self.opts.add_argument('--headless')
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
@@ -98,8 +98,9 @@ class RootChromeDriver:
 
     def _init_local_driver(self):
         # self.opts.experimental_options('prefs', {'intl.accept_languages': 'en,en_US'})
-        if self.profile_path:
-            self.opts.add_argument(f"--user-data-dir={self.profile_path}")
+
+        # if self.profile_path:
+        #     self.opts.add_argument(f"--user-data-dir={self.profile_path}")
 
         driver_path = ChromeDriverManager().install()
         service = ChromeService(driver_path)

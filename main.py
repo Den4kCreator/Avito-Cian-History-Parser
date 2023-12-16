@@ -10,6 +10,7 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import urllib.request
+import threading
 
 
 from hcaptcha_solver import hcaptcha_solver
@@ -34,6 +35,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     encoding='utf-8')
 
+# create errors container
+ERRORS_CONTAINER = []
+
 
 def send_email_msg(body_msg, subject_msg, send_from, password, send_to):
     # Create a secure SSL/TLS context
@@ -57,359 +61,431 @@ def send_email_msg(body_msg, subject_msg, send_from, password, send_to):
         return send_errors
 
 
-def cian_parse_cards(driver, collected_cards):
-    # LOGGING INFO
-    logging.info(f'start cian parse cards function')
+def cian_ad_parse(ad_url, driver, collected_ads):
+    # open ad page
+    driver.get(ad_url)
 
-    # wait cards loading
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
-    )
-    cards_count_elem = driver.find_element(By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]')
-    cards_count = int(cards_count_elem.get_property('childElementCount')) if cards_count_elem else 0
+    # LOGGER INFO
+    logging.info(f'loaded cian ad - {ad_url}')
 
-    # LOGGING INFO
-    logging.info(f'find ads (cards) - {cards_count}')
+    # get phones
+    phones = ''
     
-    for card_n in range(1, cards_count+3):
-        try:
-            btn = driver.find_element(By.XPATH, f'//div[@class="_93444fe79c--wrapper--W0WqH"]/div[{card_n}]//button[@data-mark="PhoneButton"]')
-        except NoSuchElementException:
-            continue
-        # scroll to btn
-        ActionChains(driver)\
-            .scroll_to_element(btn)\
-            .move_to_element(btn)\
-            .perform()
-        btn.click()
+    try:
+        WebDriverWait(driver, timeout=10, poll_frequency=1).until(
+            EC.element_to_be_clickable((By.XPATH, '//button[@data-testid="contacts-button"]'))
+        ).click()
+        phones_elems = WebDriverWait(driver, timeout=4, poll_frequency=1).until(
+            EC.presence_of_all_elements_located((By.XPATH, '//div[@data-name="Phones"]//div'))
+        )
+        phones_text = (e.text for e in phones_elems)
+        phones = ' | '.join(phones_text)
+    except Exception as ex:
+        logging.error(f'error get phone: {ex}')
 
-        # LOGGING INFO
-        logging.info(f'find and click phone button')
-
-        # accept number
-        try:
-            WebDriverWait(driver, 2, poll_frequency=1).until(
-                EC.presence_of_element_located((By.XPATH, '//button//span[text()="Всё равно позвонить"]'))
-            ).click()
-
-            # LOGGING INFO
-            logging.info(f'click on accept number button')
-        except TimeoutException:
-            pass
+    
     html = driver.page_source
     soup = BS(html, 'html.parser')
-    cards = soup.find_all('div', {'data-testid': 'offer-card'})
-    for card in cards:
-        link = card.find('a', class_='_93444fe79c--link--VtWj6').get('href')
-        title = card.find('span', attrs={'data-mark': 'OfferTitle'}).text
-        # right side
-        right_elem = card.find('div', attrs={'data-name': 'BrandingLevelWrapper'})
-        id_ = link.split('suburban/')[1].replace('/', '')
-        type_company = right_elem.find('div', class_='_93444fe79c--container--GyJAp').find('span').text.strip()
-        phone = right_elem.find('span', attrs={'data-mark': 'PhoneValue'}).text.strip()
-        price = card.find('span', {'data-mark': 'MainPrice'}).text.strip().replace('\xa0', ' ')
-        additional_address = ' | '.join(
-            [e.find('a').text.strip() + ' ' + e.find('div').text.strip() for e in card.find_all('div', class_='_93444fe79c--container--w7txv')]).replace('\n', '|')
-        address = additional_address + ' | ' + card.find('div', {'class': '_93444fe79c--labels--L8WyJ'}).text.strip().replace('\n', '|')
 
-        electric = 'Не указано'
-        gaz = 'Не указано'
-        sewarage = 'Не указано'
-        water = 'Не указано'
-        area = 'Не указано'
-        # request and collect this data
-        driver.get(link)
-        sleep(3)
-        date_created_text = driver.find_element(By.XPATH, '//div[@data-testid="metadata-added-date"]').text
-        date_created = date_created_text.split('Обновлено:')
-        if len(date_created) > 1:
-            date_created = date_created[1].strip()
-            date_created = cian_convert_date(date_created)
-        else:
-            date_created = date_created[0].strip()
-        try:
-            views_data = driver.find_element(By.XPATH, '//button[@data-name="OfferStats"]').text
-        except NoSuchElementException:
-            continue
-        else:
-            total_views, today_views = views_data.split(', ')
-            total_views, today_views = int(''.join(re.findall(r'\d+', total_views))), int(''.join(re.findall(r'\d+', today_views)))
-            
-        card_html = driver.page_source
-        soup = BS(card_html, 'html.parser')
-        params_elems = soup.find_all('div', attrs={'data-name': 'OfferSummaryInfoItem'})
-        params_elems = [] if params_elems is None else params_elems
-        # format_params_elems = [ for p in params_elems]
-        for p in params_elems:
-            if not p:
-                continue
-            p = p.text
-            if 'Электричество' in p:
-                electric = p.replace('Электричество', '').replace('\xa0', ' ')
-            elif 'Газ' in p:
-                gaz = p.replace('Газ', '').replace('\xa0', ' ')
-            elif 'Канализация' in p:
-                sewarage = p.replace('Канализация', '').replace('\xa0', ' ')
-            elif 'Водоснабжение' in p:
-                water = p.replace('Водоснабжение', '').replace('\xa0', ' ')
-            elif 'Площадь' in p:
-                area = p.replace('Площадь', '').replace('\xa0', '')
+    title = soup.find('div', attrs={'data-name': 'OfferTitleNew'}).text
+    id_ = ad_url.split('suburban/')[1].replace('/', '')
+    type_company = soup.find('div', attrs={'data-name': 'AuthorAside'}).text.strip()
+    price = soup.find('div', attrs={'data-testid': 'price-amount'}).text.strip().replace('\xa0', ' ')
+    # price = soup.find('span', {'data-mark': 'MainPrice'}).text.strip().replace('\xa0', ' ')
+    # //div[@data-mark="Shutter"]//div[@data-id="content"]/span
+    additional_address = soup.find('div', attrs={'data-id': 'content'}).text.replace('\n', ' | ')
+    # additional_address = ' | '.join(
+    #     [e.find('a').text.strip() + ' ' + e.find('div').text.strip() for e in soup.find_all('div', class_='_93444fe79c--container--w7txv')]).replace('\n', '|')
+    main_address = soup.find('div', attrs={'data-name': 'AddressContainer'}).text.replace('\n', ' | ')
+    address = 'DESCRIPTION ADDRESS --> | ' + additional_address + ' | MAIN ADDRESS --> | ' + main_address
+
+    # коммуникации
+    electric = 'Не указано'
+    gaz = 'Не указано'
+    sewarage = 'Не указано'
+    water = 'Не указано'
+    area = 'Не указано'
+    # request and collect this data
+    # driver.get(link)
+    # sleep(3)
+    date_created_text = driver.find_element(By.XPATH, '//div[@data-testid="metadata-added-date"]').text
+    date_created = date_created_text.split('Обновлено:')
+    if len(date_created) > 1:
+        date_created = date_created[1].strip()
+        date_created = cian_convert_date(date_created)
+    else:
+        date_created = date_created[0].strip()
+    try:
+        views_data = driver.find_element(By.XPATH, '//button[@data-name="OfferStats"]').text
+    except NoSuchElementException:
+        return collected_ads
+    else:
+        total_views, today_views = views_data.split(', ')
+        total_views, today_views = int(''.join(re.findall(r'\d+', total_views))), int(''.join(re.findall(r'\d+', today_views)))
         
-        dict_card = {
-            'ad_name': title,
-            'ad_total_views': total_views,
-            'ad_id': id_,
-            'ad_area': area,
-            'ad_total_price': price,
-            'ad_address': address,
-            'ad_type_company': type_company,
-            'ad_phone': phone,
-            'ad_link': link,
-            'ad_date_created': date_created,
-            'electric': electric,
-            'gaz': gaz,
-            'water': water,
-            'sewarage': sewarage,
-            'parse_timestamp': str(datetime.now().strftime(TIMESTAMP_DT_FORMAT)),
-        }
-        if not any([dict_card['ad_id'] == dict_2_card['ad_id'] for dict_2_card in collected_cards]):
-            print(dict_card)
-            collected_cards.append(dict_card)       
+    card_html = driver.page_source
+    soup = BS(card_html, 'html.parser')
+    params_elems = soup.find_all('div', attrs={'data-name': 'OfferSummaryInfoItem'})
+    params_elems = [] if params_elems is None else params_elems
+    # format_params_elems = [ for p in params_elems]
+    for p in params_elems:
+        if not p:
+            continue
+        p = p.text
+        if 'Электричество' in p:
+            electric = p.replace('Электричество', '').replace('\xa0', ' ')
+        elif 'Газ' in p:
+            gaz = p.replace('Газ', '').replace('\xa0', ' ')
+        elif 'Канализация' in p:
+            sewarage = p.replace('Канализация', '').replace('\xa0', ' ')
+        elif 'Водоснабжение' in p:
+            water = p.replace('Водоснабжение', '').replace('\xa0', ' ')
+        elif 'Площадь' in p:
+            area = p.replace('Площадь', '').replace('\xa0', '')
+    
+    dict_card = {
+        'ad_name': title,
+        'ad_total_views': total_views,
+        'ad_id': id_,
+        'ad_area': area,
+        'ad_total_price': price,
+        'ad_address': address,
+        'ad_type_company': type_company,
+        'ad_phone': phones,
+        'ad_link': ad_url,
+        'ad_date_created': date_created,
+        'electric': electric,
+        'gaz': gaz,
+        'water': water,
+        'sewarage': sewarage,
+        'parse_timestamp': str(datetime.now().strftime(TIMESTAMP_DT_FORMAT)),
+    }
+    if not any([dict_card['ad_id'] == dict_2_card['ad_id'] for dict_2_card in collected_ads]):
+        print(dict_card)
+        collected_ads.append(dict_card)
 
 
+def cian_parse_ads(page_n, page_url, collected_ads):
+    try:
+        with RootChromeDriver()._init_local_driver() as driver:
+            # collect current (first) page and replace to 2 3 4 5...
+            print(f'[*]Get - {page_url}')
+            driver.get(page_url)
+    
+            # scroll down
+            body = WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, 'body')))
+            body.send_keys(Keys.END)
+            body.send_keys(Keys.END)
+    
+            logging.info(f'Scroll page to down - {page_url}')
+    
+            # check that page is exists
+            try:
+                if page_n > 1:
+                    WebDriverWait(driver, 3, poll_frequency=1).until(
+                        EC.url_contains(f'&p={page_n}')
+                    )
+            except TimeoutException:
+                logging.info(f'get timeout exception for wait page (in the end) - {page_url}')
+                return
+            
+            # start page parse 
+            logging.info(f'start cian parse ads on page - {page_url}')
+        
+            # wait ads loading
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
+            )
+        
+            # get ad urls
+            ads_urls = set()
+            ads_urls_elems = WebDriverWait(driver, timeout=15).until(
+                EC.presence_of_all_elements_located(
+                    (By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]//article[@data-name="CardComponent"]//a[@class="_93444fe79c--link--VtWj6"]'))
+            )
+            for e in ads_urls_elems:
+                ads_urls.add(
+                    e.get_attribute('href')
+                )
+            # convert to list
+            ads_urls = list(ads_urls)
+            logging.info(f'collect ads urls - {len(ads_urls)} - ({page_url})')
+        
+            # parse ads urls
+            for ad_url in ads_urls:
+                cian_ad_parse(ad_url, driver, collected_ads)
 
-def cian_parse(driver: ChromeDriver, region_id: str):
-    # LOGGING INFO
+    except Exception as ex:
+        # handle error
+        ex_msg = f'ERROR PARSE CIAN ADS FUNCTION (FOR EVERY PAGE), page_url - [{page_url}], exception - [{ex}]'
+        handle_global_error(ex_msg)
+        # quit from driver
+        driver.close()
+        driver.quit()
+
+
+def cian_parse(region_id: str):
     logging.info(f'cian parse start function, region_id - {region_id}')
 
     region_id = str(region_id)
-    collected_cards = []    # container ads
-    ex = ''   # Doesnt have any exceptions on start function
+    collected_ads = []    # container ads
 
     # we have a first page => &p=1
+    # init page urls with page_nums
+    page_urls = []
+
     page_url = f'https://www.cian.ru/cat.php?deal_type=sale&engine_version=2&object_type%5B0%5D=3&offer_type=suburban&p=1&region={region_id}'
-    for page_n in range(1, 5_000):
+    for page_n in range(1, 10):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
-        # collect current (first) page and replace to 2 3 4 5...
-        print(f'[*]Get - {page_url}')
-        driver.get(page_url)
+        page_urls.append(
+            [page_url, page_n])
 
-        # scroll down
-        body = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'body')))
-        body.send_keys(Keys.END)
-        body.send_keys(Keys.END)
 
-        # LOGGING INFO
-        logging.info('Scroll page to down')
+    for page_urls_group in split_list(page_urls, 6):
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=cian_parse_ads, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
+        
+        for thread in threads:
+            thread.join()
+            # collect ads for every page
+            # cian_parse_ads(page_n, page_url, collected_ads)
 
-        # check that page is exists
-        try:
-            if page_n > 1:
-                WebDriverWait(driver, 3, poll_frequency=1).until(
-                    EC.url_contains(f'&p={page_n}')
-                )
-        except TimeoutException:
-            return [collected_cards, ex]
-        else:
-            try:
-                cian_parse_cards(driver, collected_cards)
-            except Exception as ex:
-                # LOGGING INFO
-                logging.error(f'get error for cian parse func - {ex}')
-                return [collected_cards, ex]
-    
-    # LOGGING INFO
-    logging.info(f'success end parsing for cian')
-
-    return [collected_cards, ex]
+    logging.info(f'success end parsing for cian, region - {region_id}')
+    return collected_ads
 
 
 def avito_driver_get_handler(driver, url):
     driver.get(url)
     try:
-        WebDriverWait(driver, timeout=6, poll_frequency=2).until(
+        WebDriverWait(driver, timeout=7, poll_frequency=2).until(
             EC.presence_of_element_located((By.XPATH, "//div[@class='h-captcha']/iframe"))
         )
     except TimeoutException:
         return
     else:
-        # LOGGING INFO
         logging.info(f'find captcha on avito, solving')
 
         print('[!]hCaptcha detected!, solving...')
         solver = hcaptcha_solver.Captcha_Solver(verbose=True)
-        captcha_is_present = solver.is_captcha_present()
-        print(f'Captcha is present flag - {captcha_is_present}\nSolving...')
+        # captcha_is_present = solver.is_captcha_present()
+        # print(f'Captcha is present flag - {captcha_is_present}\nSolving...')
         solver.solve_captcha(driver)
-        driver.find_element(By.XPATH, '//div[@class="h-captcha"]//button[@type="submit"]').click()
-        sleep(6)
+        WebDriverWait(driver, timeout=6).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@class="h-captcha"]//button[@type="submit"]'))
+        ).click()
+        WebDriverWait(driver, timeout=10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
+        )
         return
 
 
-def avito_ads_parse(driver, collected_ads):
-    # LOGGING INFO
-    logging.info(f'start avito_ads_parse')
+def avito_ad_parse(driver, ad_url, collected_ads):
+    # load page
+    avito_driver_get_handler(driver, ad_url)
+    
+    # render html, get soup
+    html = driver.page_source
+    soup = BS(html, 'html.parser')
+    
+    ad_price = soup.find('span', class_='style-price-value-main-TIg6u').find('span', attrs={'itemprop': 'price'}).text.strip().replace('\xa0', ' ')
+    ad_name = soup.find('div', class_='style-titleWrapper-Hmr_5').find('h1').text.strip().replace('\xa0', ' ')
+    ad_unit_price = soup.find('div', class_='style-item-price-sub-price-_5RUD').text.strip().replace('\xa0', ' ')
 
-    ads_count = driver.find_elements(By.CSS_SELECTOR, 'div[data-marker="item"]')
-    ads_count = 0 if ads_count is None else len(ads_count)
+    # ad_price = driver.find_element(By.XPATH, '//span[@class="style-price-value-main-TIg6u"]//span[@itemprop="price"]').text
+    # ad_name = driver.find_element(By.XPATH, '//div[@class="style-titleWrapper-Hmr_5"]//h1').text
+    # ad_unit_price = driver.find_element(By.XPATH, '//div[@class="style-item-price-sub-price-_5RUD"]').text
 
-    # LOGGING INFO
-    logging.info(f'collect ads_count - {ads_count}')
+    if 'залог' in ad_unit_price:
+        ad_unit_price = 'Нет удельной цены'
+    else:
+        ad_unit_price.strip().replace('\xa0', ' ')
 
-    for ad_num in range(1, ads_count):
+    # собираем доп инфу
+    ad_address = soup.find('div', attrs={'itemprop': 'address'}).text.strip().replace('\n', '|')
+    ad_id = soup.find('span', attrs={'data-marker': 'item-view/item-id'}).text
+    ad_id = re.search('\d+', ad_id)[0]
+    ad_company_type = soup.find('div', attrs={'data-marker': 'seller-info/label'}).text
+    ad_publ_time = soup.find('span', attrs={'data-marker': 'item-view/item-date'}).text
+    ad_publ_time = avito_convert_date(ad_publ_time)
+    ad_total_views = soup.find('span', attrs={'data-marker': 'item-view/total-views'}).text
+    ad_total_views = int(re.search('\d+', ad_total_views)[0])
+    ad_today_views = soup.find('span', attrs={'data-marker': 'item-view/today-views'}).text
+    ad_today_views = int(re.search('\d+', ad_today_views)[0])
+    
 
-        ad_xpath = f'//div[@data-marker="item"][{ad_num}]'
-        # Собираем цены в объявлениях потом метод get("content")
-        ad_price = driver.find_element(By.XPATH, ad_xpath + '//p[@data-marker="item-price"]').text.replace('\xa0', '').replace(r'\xa0', '')
+    # ad_address = driver.find_element(By.XPATH, '//div[@itemprop="address"]').text.strip().replace('\n', '|')
+    # ad_id = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-id"]').text
+    # ad_id = re.search('\d+', ad_id)[0]
+    # ad_company_type = driver.find_element(By.XPATH, '//div[@data-marker="seller-info/label"]').text
+    # ad_publ_time = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-date"]').text
+    # ad_publ_time = avito_convert_date(ad_publ_time)
+    # ad_total_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/total-views"]').text
+    # ad_total_views = int(re.search('\d+', ad_total_views)[0])
+    # ad_today_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/today-views"]').text
+    # ad_today_views = int(re.search('\d+', ad_today_views)[0])
 
-        # Собираем url объявлений
-        ad_url = driver.find_element(By.XPATH, ad_xpath + '//a[@data-marker="item-title"]').get_attribute("href")
+    # собираем инфу с категорий снизу
+    ad_area_found_list = [e.text.replace('Площадь:', '').strip().replace('\xa0', '') for e in 
+                          soup.find_all('li', class_='params-paramsList__item-appQw') if 'Площадь:' in e.text]
+    # ad_area_found_list = [e.text.replace('Площадь:', '').strip() for e in 
+    #                       driver.find_elements(By.XPATH, '//li[@class="params-paramsList__item-appQw"]') if 'Площадь:' in e.text]
+    ad_area = ad_area_found_list[0] if ad_area_found_list else ad_name
+    
+    # коммуникации
+    ad_descr = soup.find('div', attrs={'data-marker': 'item-view/item-description'}).text.lower()
+    # ad_descr = driver.find_element(By.XPATH, '//div[@data-marker="item-view/item-description"]').text.lower()
+    
+    electric = 'Упоминаеться' if re.search('электр', ad_descr) else 'Не указано'
+    gaz = 'Упоминаеться' if re.search('газ', ad_descr) else 'Не указано'
+    sewarage = 'Упоминаеться' if re.search('канализа', ad_descr) else 'Не указано'
+    water = 'Упоминаеться' if re.search('вод[ао]', ad_descr) else 'Не указано'
 
-        # Собираем названия объявлений
-        ad_name = driver.find_element(By.XPATH, ad_xpath + '//h3[@itemprop="name"]').text
+    # собираем номер телефона (после открытия телефооного банера, элементы ктегорий не видимы становяться)
+    # поэтом парсинг телефона после категорий (в поледнюю очередь!!!)
+    try:
+        # Наводим курсор на кнопку телефона и нажимаем на нее для отображения картинки с номером телефона
+        button_phone = WebDriverWait(driver, timeout=5, poll_frequency=1).until(
+            EC.presence_of_element_located((By.XPATH, '//button[@data-marker="item-phone-button/card"]'))
+        )
+        sleep(2)
+        ActionChains(driver).move_to_element(button_phone).click(button_phone).perform()
 
-        # Собираем удельные цены (за сотку и т.д.)  
-        try:
-            ad_unit_price = driver.find_element(By.XPATH, ad_xpath + '//div[@class="iva-item-priceStep-uq2CQ"]//span/p').text
-        except NoSuchElementException:
-            ad_unit_price = 'Нет удельной цены'
+        # Скачиваем img с номерами телефонов и кладем в папку "phone_num_imgs", проверив, есть ли она
+        num_img_url = WebDriverWait(driver=driver, timeout=4).until(EC.presence_of_element_located((By.XPATH, '//img[@data-marker="phone-popup/phone-image"]'))).get_attribute("src")
+        # num_img_url = soup.find('img', attrs={'data-marker': 'phone-popup/phone-image'}).get("src")
+        if not os.path.exists("phone_num_imgs"):
+            os.mkdir("phone_num_imgs")
+        urllib.request.urlretrieve(num_img_url, f"phone_num_imgs/phone_img.png")
 
-        # Переходим на страницу объявляние для сбора доп инфы
-        if len(driver.window_handles) == 1: 
-            driver.execute_script("window.open('', '_blank');")
-        # Переключаемся на новое вкладка
-        driver.switch_to.window(driver.window_handles[-1])
-        # начинаем сбор до инфы
-        avito_driver_get_handler(driver, ad_url)
-        sleep(4)
+        # Открываем картинку с помощью PIL
+        img = Image.open(f"phone_num_imgs/phone_img.png")
 
-        # собираем доп инфу
-        ad_address = driver.find_element(By.XPATH, '//div[@itemprop="address"]').text.strip().replace('\n', '|')
-        ad_id = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-id"]').text
-        ad_id = re.search('\d+', ad_id)[0]
-        ad_company_type = driver.find_element(By.XPATH, '//div[@data-marker="seller-info/label"]').text
-        ad_publ_time = driver.find_element(By.XPATH, '//span[@data-marker="item-view/item-date"]').text
-        ad_publ_time = avito_convert_date(ad_publ_time)
-        ad_total_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/total-views"]').text
-        ad_total_views = int(re.search('\d+', ad_total_views)[0])
-        ad_today_views = driver.find_element(By.XPATH, '//span[@data-marker="item-view/today-views"]').text
-        ad_today_views = int(re.search('\d+', ad_today_views)[0])
+        # Распознаем текст телефона с картинки с помощью tesseract
+        # custom_config = r"--oem3 --psm13"  # Настройки для tesseract, эти по сути автоматические https://help.ubuntu.ru/wiki/tesseractб, oem3 это это режим работы движка, он и так по умолчанию 3, но вот остальные режимы: 0 = Original Tesseract only. 1 = Neural nets LSTM only. 2 = Tesseract + LSTM. 3 = Default, based on what is available.
+        phone_num = pytesseract.image_to_string(img).replace("\n", "")
+        os.remove(f"phone_num_imgs/phone_img.png")
+    except Exception as ex:
+        print(ex)
+        phone_num = "Не получилось выгрузить номер телефона"
 
-        # собираем инфу с категорий снизу
-        ad_area_found_list = [e.text.replace('Площадь:', '').strip() for e in driver.find_elements(By.XPATH, '//li[@class="params-paramsList__item-appQw"]') if 'Площадь:' in e.text]
-        ad_area = ad_area_found_list[0] if ad_area_found_list else ad_name
+    # Добавляем все сведения из объявления  в словарь
+    ad_dict_new = {
+        "ad_name": ad_name,
+        'ad_area': ad_area,
+        'ad_id': ad_id,
+        "ad_link": ad_url,
+        "ad_total_price": ad_price,
+        'ad_type_company': ad_company_type,
+        'gaz': gaz,
+        'water': water,
+        'sewarage': sewarage,
+        'electric': electric,
+        "ad_unit_price": ad_unit_price,
+        "ad_address": ad_address,
+        "ad_date_created": ad_publ_time,
+        'ad_total_views': ad_total_views,
+        "ad_phone": phone_num,
+        'parse_timestamp': str(datetime.now().strftime(TIMESTAMP_DT_FORMAT)),
+    }
+    if not any([ad_dict_new['ad_id'] == ad_d['ad_id'] for ad_d in collected_ads]):
+        print(ad_dict_new)
+        collected_ads.append(ad_dict_new)
+
+
+def avito_ads_parse(ads_urls, driver, collected_ads):
+    for ad_url in ads_urls:
+        avito_ad_parse(driver, ad_url, collected_ads)
         
-        # коммуникации
-        ad_descr = driver.find_element(By.XPATH, '//div[@data-marker="item-view/item-description"]').text.lower()
-        electric = 'Упоминаеться' if re.search('электр', ad_descr) else 'Не указано'
-        gaz = 'Упоминаеться' if re.search('газ', ad_descr) else 'Не указано'
-        sewarage = 'Упоминаеться' if re.search('канализа', ad_descr) else 'Не указано'
-        water = 'Упоминаеться' if re.search('вод[ао]', ad_descr) else 'Не указано'
 
-        # собираем номер телефона (после открытия телефооного банера, элементы ктегорий не видимы становяться)
-        # поэтом парсинг телефона после категорий (в поледнюю очередь!!!)
-        try:
-            # Наводим курсор на кнопку телефона и нажимаем на нее для отображения картинки с номером телефона
-            button_phone = driver.find_element(By.XPATH, '//button[@data-marker="item-phone-button/card"]')
-            sleep(2)
-            ActionChains(driver).move_to_element(button_phone).click(button_phone).perform()
-
-            # Скачиваем img с номерами телефонов и кладем в папку "phone_num_imgs", проверив, есть ли она
-            num_img_url = driver.find_element(By.XPATH, '//img[@data-marker="phone-popup/phone-image"]').get_attribute("src")
-            if not os.path.exists("phone_num_imgs"):
-                os.mkdir("phone_num_imgs")
-            urllib.request.urlretrieve(num_img_url, f"phone_num_imgs/phone_img.png")
-
-            # Открываем картинку с помощью PIL
-            img = Image.open(f"phone_num_imgs/phone_img.png")
-
-            # Распознаем текст телефона с картинки с помощью tesseract
-            # custom_config = r"--oem3 --psm13"  # Настройки для tesseract, эти по сути автоматические https://help.ubuntu.ru/wiki/tesseractб, oem3 это это режим работы движка, он и так по умолчанию 3, но вот остальные режимы: 0 = Original Tesseract only. 1 = Neural nets LSTM only. 2 = Tesseract + LSTM. 3 = Default, based on what is available.
-            phone_num = pytesseract.image_to_string(img).replace("\n", "")
-            os.remove(f"phone_num_imgs/phone_img.png")
-        except Exception as ex:
-            print(ex)
-            phone_num = "Не получилось выгрузить номер телефона"
-
-        # Добавляем все сведения из объявления  в словарь
-        ad_dict_new = {
-            "ad_name": ad_name,
-            'ad_area': ad_area,
-            'ad_id': ad_id,
-            "ad_link": ad_url,
-            "ad_total_price": ad_price,
-            'ad_type_company': ad_company_type,
-            'gaz': gaz,
-            'water': water,
-            'sewarage': sewarage,
-            'electric': electric,
-            "ad_unit_price": ad_unit_price,
-            "ad_address": ad_address,
-            "ad_date_created": ad_publ_time,
-            'ad_total_views': ad_total_views,
-            "ad_phone": phone_num,
-            'parse_timestamp': str(datetime.now().strftime(TIMESTAMP_DT_FORMAT)),
-        }
-        if not any([ad_dict_new['ad_id'] == ad_d['ad_id'] for ad_d in collected_ads]):
-            print(ad_dict_new)
-            collected_ads.append(ad_dict_new)
-        # Переключаемся обратно на основное вкладка
-        driver.switch_to.window(driver.window_handles[0])
-
-
-def avito_parse(driver: ChromeDriver, region_id):
-    # LOGGING INFO
+def avito_parse(region_id):
     logging.info(f'start avito parsing, region_id: {region_id}')
 
     # start function
     collected_ads = []    # container ads
-    ex = ''   # Doesnt have any exceptions on start function
+
+    def process_page(page_n, page_url, collected_ads):
+        try:
+            with RootChromeDriver()._init_local_driver() as driver:
+                print(f'[*]Get - {page_url}')
+                avito_driver_get_handler(driver, page_url)
+        
+                logging.info(f'success get and handling page on captcha - {page_url}')
+        
+                # scroll down
+                body = WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.TAG_NAME, 'body')))
+                body.send_keys(Keys.END)
+                body.send_keys(Keys.END)
+        
+                logging.info(f'Scroll page to down - [{page_url}]')
+                
+                # check that page is exists
+                try:
+                    if page_n > 1:
+                        WebDriverWait(driver, 3, poll_frequency=1).until(
+                            EC.url_contains(f'&p={page_n}')
+                        )
+                except TimeoutException:
+                    logging.info('get timeout exception for wait page (in the end)')
+                    return
+    
+                # collect and wait ads for load ads_urls
+                ads_count = len(WebDriverWait(driver, timeout=20).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
+                ))
+                
+                # collect ad urls
+                ads_urls = list(
+                    set(driver.find_element(By.XPATH, f'//div[@data-marker="item"][{ad_num}]//a[@data-marker="item-title"]').get_attribute("href") for ad_num in range(1, ads_count)))
+            
+                # logging.info(f'collect ads_count - {ads_count}')
+                logging.info(f'collected urls count - {len(ads_urls)} - ({page_url})')
+        
+                try:
+                    avito_ads_parse(ads_urls, driver, collected_ads)
+                except Exception as ex:
+                    ex_msg = f'ERROR avito_ads_parse FUNCTION - {ex} ({page_url})'
+                    handle_global_error(ex_msg)
+        except Exception as ex:
+            # handle error
+            ex_msg = f'ERROR PARSE AVITO ADS FUNCTION (FOR EVERY PAGE), page_url - [{page_url}], exception - [{ex}]'
+            handle_global_error(ex_msg)
+            # quit from driver
+            driver.close()
+            driver.quit()
+        
+    # create page urls 
+    page_urls = []
 
     page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
-    for page_n in range(1, 5_000):   
+    for page_n in range(1, 10):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
-        
-        # collect current (first) page and replace to 2 3 4 5...
-        print(f'[*]Get - {page_url}')
-        avito_driver_get_handler(driver, page_url)
-
-        # LOGGING INFO
-        logging.info(f'success get and handling page on captcha - {page_url}')
-
-        # scroll down
-        body = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'body')))
-        body.send_keys(Keys.END)
-        body.send_keys(Keys.END)
-
-        # LOGGING INFO
-        logging.info('Scroll page to down')
-        
-        # check that page is exists
-        try:
-            if page_n > 1:
-                WebDriverWait(driver, 3, poll_frequency=1).until(
-                    EC.url_contains(f'&p={page_n}')
-                )
-        except TimeoutException:
-            # LOGGING INFO
-            logging.info('get timeout exception for wait page')
-            return [collected_ads, ex]
-        # Все объявления на странице
-        # Счетчик для нумерации файлов с номером телефона
-        try:
-            avito_ads_parse(driver, collected_ads)
-        except Exception as ex:
-            # LOGGING INFO
-            logging.error(f'get error for avito_ads_parse function - {ex}')
-            return [collected_ads, ex]
+        page_urls.append(
+            [page_url, page_n])
     
-    # LOGGING INFO
-    logging.info('success end parsing for avito')
-    return [collected_ads, ex]
+    # process pages
+    for page_urls_group in split_list(page_urls, 6):
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=process_page, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
+        
+        for thread in threads:
+            thread.join()
+
+    
+    logging.info(f'success end parsing for avito, region {region_id}')
+    return collected_ads
+
 
 def cian_convert_date(date_string):
     # Словарь для перевода названий месяцев
@@ -468,7 +544,7 @@ def avito_convert_date(date_string):
         'декабря': 12
     }
 
-    date_string = date_string.replace('· ', '')
+    date_string = date_string.replace('· ', '').strip()
 
     # Разбиваем строку на дату и время
     date, time = date_string.split(' в ')
@@ -494,38 +570,31 @@ def avito_convert_date(date_string):
 
 
 def update_total_csv(ads_data: list, fn):
+    if not ads_data:
+        return
+
     csv_ads_id = []
     if os.path.exists(fn):
         with open(fn, 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             csv_ads_id = [str(row['ad_id']) for row in reader]
     
-    # LOGGING INFO
-    logging.info(f'Finish read total csv (ads id) - {csv_ads_id}')
-
-    # process ads_data
-    process_ads_data = ads_data.copy()
-    for ad in process_ads_data:
-        del ad['parse_timestamp']
-
-    # LOGGING INFO
-    logging.info(f'finish process ads_data - {[process_ads_data]}')
+    logging.info(f'read total csv - {fn}, ads id count - {len(csv_ads_id)}')
     
     # Сохранение данных в CSV файл
     with open(fn, 'a', newline='', encoding='utf-8') as file:
-        writer = csv.DictWriter(file, fieldnames=process_ads_data[0].keys())
+        writer = csv.DictWriter(file, fieldnames=ads_data[0].keys())
         
         # записать заголовки если файл новый
         if not csv_ads_id:
             writer.writeheader()
 
         # Write new data only if 'ad_id' not in csv_ads_id
-        for ad in process_ads_data:
+        for ad in ads_data:
             if str(ad['ad_id']) not in csv_ads_id:
                 writer.writerow(ad)
     
-    # LOGGING INFO
-    logging.info(f'finish saved total csv')
+    logging.info(f'saved new data to total csv')
 
 
 def read_history_csv(fn):
@@ -553,16 +622,10 @@ def read_history_csv(fn):
 def update_history_csv(ads_data, fn):
     existing_ads = read_history_csv(fn)
 
-    # LOGGING INFO
-    logging.info(f'read existings_ads - {existing_ads}')
-    logging.info(f'start update history csv')
+    logging.info(f'start update history csv for [{fn}]')
 
     # update existing ads
     for ad in ads_data:
-        # LOGGING INFO
-        logging.info(f'get ad - {ad}')
-
-
         ad_id = ad['ad_id']
         
         existing_ad = next((existing_ad for existing_ad in existing_ads if str(existing_ad['ad_id']) == str(ad_id)), None)
@@ -580,10 +643,8 @@ def update_history_csv(ads_data, fn):
             }
             existing_ads.append(ad_dict)
     
-    # LOGGING INFO
-    logging.info(f'Finish building existing ads - {existing_ads}')
+    logging.info(f'Created existing ads')
         
-    
     # Write the existing ads rows
     with open(fn, 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
@@ -604,8 +665,7 @@ def update_history_csv(ads_data, fn):
                 ad_data = [ad_id, timestamp, ad_total_price, ad_total_views]
                 writer.writerow(ad_data)
     
-    # LOGGING INFO
-    logging.info(f'Finish writing existings ads')
+    logging.info(f'Finished writing existings ads')
 
 
 
@@ -625,136 +685,118 @@ def sleep_to_point(point: datetime):
                 # print('*sleep*')
                 sleep(unit if name != 'seconds' else units_count)
 
+def history_csv_updater(ads, fn):
+    # ex_msg = ''
+    # update total ads for avito
+    try:
+        update_history_csv(ads, fn)
+    except Exception as ex:
+        ex_msg = f'ERROR UPDATE HISTORY CSV FILE - [{fn}], ERROR MESSAGE - [{ex}]'
+        handle_global_error(ex_msg)
+    else:
+        msg = f'HISTORY csv for [{fn}] was updated!'
+        logging.info(msg)
+    # return ex_msg
+
+
+def total_csv_updater(ads, fn):
+    # ex_msg = ''
+    # update total ads for avito
+    try:
+        update_total_csv(ads, fn)
+    except Exception as ex:
+        ex_msg = f'ERROR UPDATE TOTAL CSV FILE - [{fn}], ERROR MESSAGE - [{ex}]'
+        handle_global_error(ex_msg)
+    else:
+        msg = f'Total csv for [{fn}] was updated!'
+        logging.info(msg)
+    # return ex_msg
+
+
+def add_global_error_to_container(error: str):
+    global ERRORS_CONTAINER
+    ERRORS_CONTAINER.append(error)
+
+
+def handle_global_error(error_msg):
+    logging.error(error_msg)
+    add_global_error_to_container(error_msg)
+
+
+
+def split_list(input_list, chunk_size):
+    """
+    Разбивает список на подсписки заданного размера.
+
+    Parameters:
+    input_list (list): Исходный список.
+    chunk_size (int): Размер подсписка.
+
+    Returns:
+    list: Список подсписков.
+    """
+    return [input_list[i:i + chunk_size] for i in range(0, len(input_list), chunk_size)]
+
 
 def main():
-    while True:
-        # (next program run in the 22:00)
-        msg = f'Начало работы парсера'
-        logging.info(msg)
+    # set ocr tesseract path
+    if not os.path.exists(TESSERACT_OCR_PATH):
+        ex_msg = f'ERROR FIND OCR_TESSERACT:\nProgramm was not found tesseract ocr .exe file ;('
+        print(ex_msg)
+        handle_global_error(ex_msg)
+    else:
+        # save ocr path and start parsing
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_OCR_PATH
 
-        # check exceptions and send emails about it
-        exceptions_msg = ''
+
+    # Создаем цикл событий asyncio
+    # loop = asyncio.get_event_loop()
+
+    # Создаем пул потоков для параллельного выполнения асинхронных задач
+    # executor = ThreadPoolExecutor(max_workers=5)
     
-        # set ocr tesseract path
-        if not os.path.exists(TESSERACT_OCR_PATH):
-            msg = f'EXCEPTION WITH FIND OCR_TESSERACT:\nProgramm was not found tesseract ocr .exe file ;(\n'
-            print(msg)
-            exceptions_msg += msg
-            logging.error(msg)
-        else:
-            # save ocr path and start parsing
-            pytesseract.pytesseract.tesseract_cmd = TESSERACT_OCR_PATH
-            
-            with RootChromeDriver()._init_local_driver() as driver:
-                # parsing moskow and MO
-                
-                # avito
-                avito_parsed = []
-        
-                try:
-                    parsed_result = avito_parse(driver, AVITO_REGIONS['Москва и МО'])   
-                except Exception as ex:
-                    parsed_result = [[], f'AVITO REGION - [Москва и МО] GET EXCEPTION\n{ex}\n']
-                else:
-                    ex = parsed_result[1]
-                    if ex:
-                        parsed_result[1] = f'AVITO REGION - [Москва и МО] GET EXCEPTION\n{ex}\n'
-                finally:
-                    avito_parsed.append(parsed_result)
-                
-                # unpack avito_parsed
-                try:
-                    avito_ads = []
-                    for ads, ex_str in avito_parsed:
-                        avito_ads += ads
-                        if ex_str:
-                            exceptions_msg += ex_str
-                except Exception as ex:
-                    msg = f'\nEXCEPTION WITH UNPACK AVITO PARSED DATA\n{ex}\n'
-                    exceptions_msg += msg
-                    logging.error(msg)
-                
-                # cian
 
-                # create cian parsed for moskow and MO
-                cian_parsed = []
-                
-                # extend cian parsed for Москва
-                try:
-                    parsed_result = cian_parse(driver, CIAN_REGIONS['Москва'])
-                except Exception as ex:
-                    parsed_result = [[], f'CIAN REGION - [Москва] GET EXCEPTION\n{ex}\n']
-                else:
-                    ex = parsed_result[1]
-                    if ex:
-                        parsed_result[1] = f'CIAN REGION - [Москва] GET EXCEPTION\n{ex}\n'
-                finally:    
-                    cian_parsed.append(parsed_result)
-                
-                # extend cian parsed for MO
-                try:
-                    parsed_result = cian_parse(driver, CIAN_REGIONS['Московская область'])
-                except Exception as ex:
-                    parsed_result = [[], f'CIAN REGION - [Московская область] GET EXCEPTION\n{ex}\n']
-                else:
-                    ex = parsed_result[1]
-                    if ex:
-                        parsed_result[1] = f'CIAN REGION - [Московская область] GET EXCEPTION\n{ex}\n'
-                finally:
-                    cian_parsed.append(parsed_result)
-        
-                # unpack cian_parsed
-                try:
-                    cian_ads = []
-                    for ads, ex_str in cian_parsed:
-                        cian_ads += ads
-                        if ex_str:
-                            exceptions_msg += ex_str
-                except Exception as ex:
-                    msg += f'\nEXCEPTION WITH UNPACK CIAN PARSED DATA\n{ex}\n'
-                    exceptions_msg += msg
-                    logging.error(msg)
-
-            # write msg about found ads
-            logging.info(f'Found avito - {len(avito_ads)}')
-            logging.info(f'Found cian - {len(cian_ads)}')
-            if exceptions_msg:
-                logging.error(f'Exceptions after parsing and unpacking - {exceptions_msg}')
+    while True:
+        msg = 'Start Parsing Program'
+        logging.info(msg)
             
-            # update prices and views history     
-            try:
-                update_history_csv(cian_ads, CIAN_HISTORY_CSV_FN)
-                update_history_csv(avito_ads, AVITO_HISTORY_CSV_FN)
-            except Exception as ex:
-                ex_msg = f'\nEXCEPTION WITH UPDATE HISTORY CSV FILES - {ex}\n'
-                exceptions_msg += ex_msg
-                logging.error(ex_msg)
-            else:
-                msg = 'History csv for cian and avito was updated!'
-                logging.info(msg)
-           
-            # update total ads
-            try:
-                update_total_csv(cian_ads, CIAN_TOTAL_CSV_FN)
-                update_total_csv(avito_ads, AVITO_TOTAL_CSV_FN)
-            except Exception as ex:
-                ex_msg = f'\nEXCEPTION WITH UPDATE TOTAL CSV FILES - {ex}\n'
-                exceptions_msg += ex_msg
-                logging.error(ex_msg)
-            else:
-                msg = 'Total csv for cian and avito was updated!'
-                logging.info(msg)
-     
+        # with RootChromeDriver()._init_local_driver() as driver:
+
+        # -- AVITO --
+        avito_ads = []
+        avito_ads.extend(avito_parse(AVITO_REGIONS['Москва и МО'])) 
+        logging.info(f'Found avito ads count - {len(avito_ads)}')
+
+        # update prices and views history  - avito
+        history_csv_updater(avito_ads, AVITO_HISTORY_CSV_FN)
+        total_csv_updater(avito_ads, AVITO_TOTAL_CSV_FN)
+
+        # -- CIAN --
+        # create cian parsed for moskow and MO
+        cian_ads = []
+        
+        # extend cian parsed for Москва
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Москва']))
+        # extend cian parsed for MO
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Московская область']))
+        logging.info(f'Found cian ads count - {len(cian_ads)}')
+
+        # update prices and views history - cian
+        total_csv_updater(cian_ads, CIAN_TOTAL_CSV_FN)
+        history_csv_updater(cian_ads, CIAN_HISTORY_CSV_FN)
+        
+
         # send msg about errors
-        if exceptions_msg:
+        if ERRORS_CONTAINER:
+            errors_container_str = '\n'.join(ERRORS_CONTAINER)
             try:
                 send_email_errors = send_email_msg(
                     subject_msg=ERROR_NOTIFICATION_SUBJECT, 
                     send_from=MAIL_LOGIN, password=MAIL_PASSWORD,
-                    send_to=MAIL_SEND_TO, body_msg=exceptions_msg
+                    send_to=MAIL_SEND_TO, body_msg=errors_container_str
                 )
             except Exception as ex:
-                msg = '\nEXCEPTION WITH SENDING EMAIL MESSAGE!\n'
+                msg = '\nERROR SENDING EMAIL MESSAGE!\n'
                 logging.info(msg)
             else:
                 logging.info('Sending email was completed')
