@@ -236,14 +236,14 @@ def cian_parse(region_id: str):
     page_urls = []
 
     page_url = f'https://www.cian.ru/cat.php?deal_type=sale&engine_version=2&object_type%5B0%5D=3&offer_type=suburban&p=1&region={region_id}'
-    for page_n in range(1, 10):
+    for page_n in range(1, 1_000):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
         page_urls.append(
             [page_url, page_n])
 
 
-    for page_urls_group in split_list(page_urls, 6):
+    for page_urls_group in split_list(page_urls, 8):
         for page_url, page_n in page_urls_group:
             threads = []
             # for url in urls:
@@ -464,14 +464,14 @@ def avito_parse(region_id):
     page_urls = []
 
     page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
-    for page_n in range(1, 10):
+    for page_n in range(1, 1_000):
         if page_n > 1:
             page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
         page_urls.append(
             [page_url, page_n])
     
     # process pages
-    for page_urls_group in split_list(page_urls, 6):
+    for page_urls_group in split_list(page_urls, 8):
         for page_url, page_n in page_urls_group:
             threads = []
             # for url in urls:
