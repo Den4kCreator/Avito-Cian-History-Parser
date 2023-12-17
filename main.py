@@ -208,66 +208,61 @@ def cian_ad_parse(ad_url, rootdriver, collected_ads):
 
 def cian_parse_ads(page_n, page_url, collected_ads):
     try:
-        rootdriver = RootChromeDriver().get_rootdriver()
-        # collect current (first) page and replace to 2 3 4 5...
-        msg = f'[*]Get - {page_url}'
-        print(msg)
-        logging.info(msg)
-
-        rootdriver.get(page_url)
+        with RootChromeDriver().get_rootdriver() as rootdriver:
+            # collect current (first) page and replace to 2 3 4 5...
+            msg = f'[*]Get - {page_url}'
+            print(msg)
+            logging.info(msg)
     
-        # scroll down
-        body = WebDriverWait(rootdriver, 15).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'body')))
-        body.send_keys(Keys.END)
-        body.send_keys(Keys.END)
-    
-        logging.info(f'Scroll page to down - {page_url}')
-    
-        # check that page is exists
-        try:
-            if page_n > 1:
-                WebDriverWait(rootdriver, 3, poll_frequency=1).until(
-                    EC.url_contains(f'&p={page_n}')
-                )
-        except TimeoutException:
-            logging.info(f'get timeout exception for wait page (in the end) - {page_url}')
-            return
+            rootdriver.get(page_url)
         
-        # start page parse 
-        logging.info(f'start cian parse ads on page - {page_url}')
+            # scroll down
+            body = WebDriverWait(rootdriver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, 'body')))
+            body.send_keys(Keys.END)
+            body.send_keys(Keys.END)
         
-        # wait ads loading
-        WebDriverWait(rootdriver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
-        )
+            logging.info(f'Scroll page to down - {page_url}')
         
-        # get ad urls
-        ads_urls = set()
-        ads_urls_elems = WebDriverWait(rootdriver, timeout=15).until(
-            EC.presence_of_all_elements_located(
-                (By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]//article[@data-name="CardComponent"]//a[@class="_93444fe79c--link--VtWj6"]'))
-        )
-        for e in ads_urls_elems:
-            ads_urls.add(
-                e.get_attribute('href')
+            # check that page is exists
+            try:
+                if page_n > 1:
+                    WebDriverWait(rootdriver, 3, poll_frequency=1).until(
+                        EC.url_contains(f'&p={page_n}')
+                    )
+            except TimeoutException:
+                logging.info(f'get timeout exception for wait page (in the end) - {page_url}')
+                return
+            
+            # start page parse 
+            logging.info(f'start cian parse ads on page - {page_url}')
+            
+            # wait ads loading
+            WebDriverWait(rootdriver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, '//div[@data-testid="offer-card"]'))
             )
-        # convert to list
-        ads_urls = list(ads_urls)
-        logging.info(f'collect ads urls - {len(ads_urls)} - ({page_url})')
-
-        # parse ads urls
-        for ad_url in ads_urls:
-            cian_ad_parse(ad_url, rootdriver, collected_ads)
-
+            
+            # get ad urls
+            ads_urls = set()
+            ads_urls_elems = WebDriverWait(rootdriver, timeout=15).until(
+                EC.presence_of_all_elements_located(
+                    (By.XPATH, '//div[@class="_93444fe79c--wrapper--W0WqH"]//article[@data-name="CardComponent"]//a[@class="_93444fe79c--link--VtWj6"]'))
+            )
+            for e in ads_urls_elems:
+                ads_urls.add(
+                    e.get_attribute('href')
+                )
+            # convert to list
+            ads_urls = list(ads_urls)
+            logging.info(f'collect ads urls - {len(ads_urls)} - ({page_url})')
+    
+            # parse ads urls
+            for ad_url in ads_urls:
+                cian_ad_parse(ad_url, rootdriver, collected_ads)
     except Exception as ex:
         # handle error
         ex_msg = f'ERROR PARSE CIAN ADS FUNCTION (FOR EVERY PAGE), page_url - [{page_url}], exception - [{ex}]'
         handle_global_error(ex_msg)
-    finally:
-        # quit from rootdriver
-        rootdriver.close()
-        rootdriver.quit()
 
 
 def cian_parse(region_id: str, executor=None, loop=None):
