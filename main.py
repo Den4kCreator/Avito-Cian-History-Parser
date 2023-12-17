@@ -10,9 +10,10 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import urllib.request
-# import threading
-import asyncio
-from concurrent.futures.thread import ThreadPoolExecutor
+import threading
+# import asyncio
+# from concurrent.futures.thread import ThreadPoolExecutor
+# from concurrent.futures import as_completed
 
 from hcaptcha_solver import hcaptcha_solver
 from selenium.webdriver.common.by import By
@@ -25,7 +26,7 @@ from bs4 import BeautifulSoup as BS
 import pytesseract
 from PIL import Image
 
-from root_chromedriver import RootChromeDriver, ChromeDriver
+from root_chromedriver import RootChromeDriver
 from cfg import * 
 
 
@@ -44,8 +45,9 @@ ERRORS_CONTAINER = []
 NUM_PARALLEL_BROWSERS = NUM_PARALLEL_BROWSERS if NUM_PARALLEL_BROWSERS <= MAX_PAGES_COUNT else MAX_PAGES_COUNT
 
 # cerate executor for async parsing
-THREAD_POOL_EXECUTOR = ThreadPoolExecutor(max_workers=NUM_PARALLEL_BROWSERS) 
-ASYNCIO_EVENT_LOOP = asyncio.get_event_loop()
+THREADING_LOCK = threading.Lock()
+# THREAD_POOL_EXECUTOR = ThreadPoolExecutor(max_workers=NUM_PARALLEL_BROWSERS) 
+# ASYNCIO_EVENT_LOOP = asyncio.get_event_loop()
 
 
 def send_email_msg(body_msg, subject_msg, send_from, password, send_to):
@@ -273,13 +275,13 @@ def cian_parse(region_id: str, executor, loop):
     # init page urls with page_nums
     page_urls = []
 
-    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
-        tasks = []
-        for page_n, page_url in zip(page_n_list, page_url_list):
-            tasks.append(
-                loop.run_in_executor(executor, cian_parse_ads, page_n, page_url, collected_ads)
-            )
-        await asyncio.gather(*tasks)
+    # async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+    #     tasks = []
+    #     for page_n, page_url in zip(page_n_list, page_url_list):
+    #         tasks.append(
+    #             loop.run_in_executor(executor, cian_parse_ads, page_n, page_url, collected_ads)
+    #         )
+    #     await asyncio.gather(*tasks)
 
 
     # generate urls
@@ -290,14 +292,27 @@ def cian_parse(region_id: str, executor, loop):
         page_urls.append(
             [page_url, page_n])
     
-    # process_pages(page_urls, collected_ads)
     for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-        # unpack group and send to loop
-        page_n_list = [group[1] for group in page_urls_group]
-        page_url_list = [group[0] for group in page_urls_group]
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=cian_parse_ads, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
         
-        loop.run_until_complete(
-            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
+        for thread in threads:
+            thread.join()
+            # collect ads for every page
+            # cian_parse_ads(page_n, page_url, collected_ads)
+    
+    # process_pages(page_urls, collected_ads)
+    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+    #     # unpack group and send to loop
+    #     page_n_list = [group[1] for group in page_urls_group]
+    #     page_url_list = [group[0] for group in page_urls_group]
+        
+    #     loop.run_until_complete(
+    #         scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
     logging.info(f'success end parsing for cian, region - {region_id}')
     return collected_ads
@@ -310,24 +325,34 @@ def avito_driver_get_handler(driver, url):
             EC.presence_of_element_located((By.XPATH, "//div[@class='h-captcha']/iframe"))
         )
     except TimeoutException:
-        return
+        pass
     else:
-        logging.info(f'find captcha on avito, solving')
+        with THREADING_LOCK:
+            try:
+                solving_avito_captcha(driver, url)
+            except Exception as ex:
+                ex_msg = f'ERROR SOLVING AVITO CAPTCHA - {ex}'
+                handle_global_error(ex_msg)
 
-        print('[!]hCaptcha detected!, solving...')
-        solver = hcaptcha_solver.Captcha_Solver(verbose=True)
-        # captcha_is_present = solver.is_captcha_present()
-        # print(f'Captcha is present flag - {captcha_is_present}\nSolving...')
-        solver.solve_captcha(driver)
-        WebDriverWait(driver, timeout=6).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@class="h-captcha"]//button[@type="submit"]'))
-        ).click()
-        WebDriverWait(driver, timeout=10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
-        )
 
-        logging.info(f'captcha was solved success, continue parsing... ({url})')
-        return
+def solving_avito_captcha(driver, url):
+    logging.info(f'find captcha on avito, solving')
+
+    print('[!]hCaptcha detected!, solving...')
+    solver = hcaptcha_solver.Captcha_Solver(verbose=False)
+    # captcha_is_present = solver.is_captcha_present()
+    # print(f'Captcha is present flag - {captcha_is_present}\nSolving...')
+    solver.solve_captcha(driver)
+    WebDriverWait(driver, timeout=6).until(
+        EC.presence_of_element_located((By.XPATH, '//div[@class="h-captcha"]//button[@type="submit"]'))
+    ).click()
+    WebDriverWait(driver, timeout=10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-marker="item"]'))
+    )
+
+    logging.info(f'captcha was solved success, continue parsing... ({url})')
+
+    
 
 
 def avito_ad_parse(driver, ad_url, collected_ads):
@@ -449,13 +474,20 @@ def avito_parse(region_id, loop, executor):
     # start function
     collected_ads = []    # container ads
 
-    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
-        tasks = []
-        for page_n, page_url in zip(page_n_list, page_url_list):
-            tasks.append(
-                loop.run_in_executor(executor, process_page, page_n, page_url, collected_ads)
-            )
-        await asyncio.gather(*tasks)
+    # async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+    #     tasks = []
+    #     for page_n, page_url in zip(page_n_list, page_url_list):
+    #         tasks.append(
+    #             loop.run_in_executor(executor, process_page, page_n, page_url, collected_ads)
+    #         )
+    
+    #     # for future in as_completed(tasks):
+    #     #     try:
+    #     #         future.result()
+    #     #     except Exception as ex:
+    #     #         print(f'future exception - {ex}')
+    #     #         continue
+    #     await asyncio.gather(*tasks)
         
 
     def process_page(page_n, page_url, collected_ads):
@@ -466,15 +498,15 @@ def avito_parse(region_id, loop, executor):
             logging.info(msg)
 
             avito_driver_get_handler(driver, page_url)
-        
+                
             logging.info(f'success get and handling page on captcha - {page_url}')
-        
+            
             # scroll down
             body = WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.TAG_NAME, 'body')))
             body.send_keys(Keys.END)
             body.send_keys(Keys.END)
-        
+            
             logging.info(f'Scroll page to down - [{page_url}]')
             
             # check that page is exists
@@ -524,15 +556,30 @@ def avito_parse(region_id, loop, executor):
             [page_url, page_n])
     
     # start process urls (pages)
+    # process pages
+    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=process_page, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
+        
+        for thread in threads:
+            thread.join()
+
+    
+    logging.info(f'success end parsing for avito, region {region_id}')
+    return collected_ads
         
     # process_pages(page_urls, collected_ads)
-    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-        # unpack group and send to loop
-        page_n_list = [group[1] for group in page_urls_group]
-        page_url_list = [group[0] for group in page_urls_group]
+    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+    #     # unpack group and send to loop
+    #     page_n_list = [group[1] for group in page_urls_group]
+    #     page_url_list = [group[0] for group in page_urls_group]
         
-        loop.run_until_complete(
-            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
+    #     loop.run_until_complete(
+    #         scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
     logging.info(f'success end parsing for avito, region {region_id}')
     return collected_ads
@@ -818,8 +865,8 @@ def main():
         avito_ads.extend(
             avito_parse(
                 AVITO_REGIONS['Москва и МО'], 
-                loop=ASYNCIO_EVENT_LOOP, 
-                executor=THREAD_POOL_EXECUTOR
+                loop='', 
+                executor=''
             )
         )
         logging.info(f'Found avito ads count - {len(avito_ads)}')
@@ -827,6 +874,20 @@ def main():
         # update prices and views history  - avito
         history_csv_updater(avito_ads, AVITO_HISTORY_CSV_FN)
         total_csv_updater(avito_ads, AVITO_TOTAL_CSV_FN)
+
+        # -- CIAN --
+        # create cian parsed for moskow and MO
+        cian_ads = []
+        
+        # extend cian parsed for Москва
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Москва']), executor='', loop='')
+        # extend cian parsed for MO
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Московская область']), executor='', loop='')
+        logging.info(f'Found cian ads count - {len(cian_ads)}')
+
+        # update prices and views history - cian
+        total_csv_updater(cian_ads, CIAN_TOTAL_CSV_FN)
+        history_csv_updater(cian_ads, CIAN_HISTORY_CSV_FN)
         
 
         # send msg about errors
