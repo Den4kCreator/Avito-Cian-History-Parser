@@ -2,12 +2,19 @@
 TESSERACT_OCR_PATH = r""   # install tesseract ocr, macos - "https://stackoverflow.com/questions/17140753/tesseract-install-mac-os"  (i dont know about installing on mac os)
                                                          # install teserract ocr, windows - "https://github.com/UB-Mannheim/tesseract/wiki" (exe file - tesseract-ocr-w64-setup-5.3.3.20231005.exe (64 bit) (or > last version))
 
+# EMAIL SETTINGS
 MAIL_HOST = "smtp-mail.outlook.com"
 MAIL_PORT = 587
-MAIL_LOGIN = ''    # new account
+MAIL_LOGIN = ''
 MAIL_PASSWORD = ''        
-MAIL_SEND_TO = ''  # any mail
+MAIL_SEND_TO = ''  # any user
 ERROR_NOTIFICATION_SUBJECT = 'PARSING ERROR! (ОШИБКА ПАРСЕРА!): Ошибка в работе приложения по поиску земельных участков на Avito и CIAN!'
+
+
+# PARSING PROCESS
+MAX_PAGES_COUNT = 5_000  # parsing pages from 1 to N
+NUM_PARALLEL_BROWSERS = 10   # parsing async N pages 
+
 
 # PARSE TIMESTAMP FORMAT
 TIMESTAMP_DT_FORMAT = '%Y-%m-%d %H:%M'
