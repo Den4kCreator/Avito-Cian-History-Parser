@@ -204,6 +204,7 @@ def cian_ad_parse(ad_url, rootdriver, collected_ads):
     if not any([dict_card['ad_id'] == dict_2_card['ad_id'] for dict_2_card in collected_ads]):
         print(dict_card)
         collected_ads.append(dict_card)
+        logging.info(str(dict_card))
 
 
 def cian_parse_ads(page_n, page_url, collected_ads):
@@ -344,12 +345,13 @@ def avito_driver_get_handler(rootdriver, url, target_elems_xpath):
                 else:
                     return
             # with THREADING_LOCK:
-            # try:
-        rootdriver._urban_get_ip()
-        # except Exception as ex:
-        #     ex_msg = f'ERROR SOLVING AVITO CAPTCHA, sleep on range 5-10 sec and repair... - {ex}'
-        #     sleep(randrange(5, 10))
-        #     handle_global_error(ex_msg)
+        try:
+            rootdriver._urban_get_ip()
+        except Exception as ex:
+            ex_msg = f'ERROR URBAN GET IP - {ex}'
+            logging.error(ex_msg)
+            # sleep(randrange(5, 10))
+            # handle_global_error(ex_msg)
 
 
 # def solving_avito_captcha(rootdriver):
@@ -481,6 +483,7 @@ def avito_ad_parse(rootdriver, ad_url, collected_ads):
     if not any([ad_dict_new['ad_id'] == ad_d['ad_id'] for ad_d in collected_ads]):
         print(ad_dict_new)
         collected_ads.append(ad_dict_new)
+        logging.info(str(ad_dict_new))
 
 
 def avito_ads_parse(ads_urls, rootdriver, collected_ads):
@@ -521,7 +524,7 @@ def avito_parse(region_id, loop=None, executor=None):
                 # process captcha and wait next elem of target url
                 avito_driver_get_handler(rootdriver, page_url, '//div[@data-marker="item"]')
                     
-                logging.info(f'success get and handling page on captcha - {page_url}')
+                # logging.info(f'success get and handling page on captcha - {page_url}')
                 
                 # scroll down
                 body = WebDriverWait(rootdriver, 15).until(
@@ -529,7 +532,7 @@ def avito_parse(region_id, loop=None, executor=None):
                 body.send_keys(Keys.END)
                 body.send_keys(Keys.END)
                 
-                logging.info(f'Scroll page to down - [{page_url}]')
+                # logging.info(f'Scroll page to down - [{page_url}]')
                 
                 # check that page is exists
                 try:

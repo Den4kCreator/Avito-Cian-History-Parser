@@ -5,7 +5,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import (NoSuchElementException, TimeoutException)
+from selenium.common.exceptions import (NoSuchElementException, TimeoutException, StaleElementReferenceException)
 from selenium.webdriver import Chrome as ChromeDriver
 # from selenium.webdriver import Remote as RemoteDriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -61,6 +61,16 @@ class RootChromeDriver(ChromeDriver):
     def _get_urban_new_ip(self):
         for _ in range(5):
             try:
+                # wait for loading elems
+                sleep(5)
+
+                # close loader elem (because we need to click on pause btn)
+                try:
+                    WebDriverWait(self, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, '//div[@class="loader__bg"]'))
+                    ).click()
+                except Exception as e:
+                    pass
                 # click stop btn (change ip)
                 WebDriverWait(self, 6).until(
                     EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--pause"]'))
@@ -89,8 +99,8 @@ class RootChromeDriver(ChromeDriver):
         self.get('chrome-extension://almalgbpmcfpdaopimbdchdliminoign/popup/index.html#/consent/main')
         
         accept_rules_func = lambda: WebDriverWait(self, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[text()=' Agree & Continue ']"))
-        ).click()
+                EC.element_to_be_clickable((By.XPATH, "//button[text()=' Agree & Continue ']"))
+            ).click()
 
         for _ in range(5):
             # accept first window
@@ -98,8 +108,10 @@ class RootChromeDriver(ChromeDriver):
                accept_rules_func()
             except TimeoutException:
                 break
+            except StaleElementReferenceException:
+                pass
             # wait open new tab
-            for _ in range(5):
+            for _ in range(3):
                 if len(self.window_handles) == 1:
                     sleep(2)
                 else:
@@ -137,8 +149,15 @@ class RootChromeDriver(ChromeDriver):
 
     
     def _urban_get_ip(self):
+        # try:
         self._load_urban_vpn()
+        # except Exception as ex:
+        #     print(f'EXCPETION LOAD URBAN - {ex}')
+        # try:
         self._get_urban_new_ip()
+        # except Exception as ex:
+        #     print(f'EXCPETION URBAN IP - {ex}')
+        
 
     def get_rootdriver(self):
         # set extensions
