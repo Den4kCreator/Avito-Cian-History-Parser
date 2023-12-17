@@ -1,0 +1,66 @@
+2023-12-18 01:56:59,239 - INFO - Start Parsing Program
+2023-12-18 01:56:59,240 - INFO - start avito parsing, region_id: moskva_i_mo
+2023-12-18 01:56:59,244 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,245 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,246 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,247 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,248 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,248 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,250 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,251 - INFO - ====== WebDriver manager ======
+2023-12-18 01:56:59,253 - INFO - ====== WebDriver manager ======
+2023-12-18 01:57:03,338 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,647 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,702 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,731 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,788 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,874 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,889 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,903 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,917 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,948 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:03,966 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,054 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,109 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,110 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,178 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,209 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,287 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,312 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,336 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,462 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,470 - INFO - Get LATEST chromedriver version for google-chrome
+2023-12-18 01:57:04,476 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,493 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,538 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,616 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,779 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:04,804 - INFO - Driver [C:\Users\Asus\.wdm\drivers\chromedriver\win64\120.0.6099.71\chromedriver-win32/chromedriver.exe] found in cache
+2023-12-18 01:57:09,339 - ERROR - ERROR PARSE AVITO ADS FUNCTION (FOR EVERY PAGE), page_url - [https://www.avito.ru/moskva_i_mo/zemelnye_uchastki?cd=1&p=1], exception - [Message: disconnected: not connected to DevTools
+  (failed to check if window was closed: disconnected: not connected to DevTools)
+  (Session info: chrome=120.0.6099.72)
+Stacktrace:
+	GetHandleVerifier [0x00636E73+174291]
+	(No symbol) [0x00560AC1]
+	(No symbol) [0x00276FF6]
+	(No symbol) [0x00267DE2]
+	(No symbol) [0x00268EFD]
+	(No symbol) [0x002774A6]
+	(No symbol) [0x0025EAFD]
+	(No symbol) [0x002D0409]
+	(No symbol) [0x002C6FD3]
+	(No symbol) [0x002A1034]
+	(No symbol) [0x002A1F8D]
+	GetHandleVerifier [0x006D49CC+820268]
+	sqlite3_dbdata_init [0x00794EBE+652494]
+	sqlite3_dbdata_init [0x007948D9+650985]
+	sqlite3_dbdata_init [0x0078962C+605244]
+	sqlite3_dbdata_init [0x0079586B+654971]
+	(No symbol) [0x0056FEBC]
+	(No symbol) [0x00568428]
+	(No symbol) [0x0056854D]
+	(No symbol) [0x00555858]
+	BaseThreadInitThunk [0x75707BA9+25]
+	RtlInitializeExceptionChain [0x77A0BD2B+107]
+	RtlClearBits [0x77A0BCAF+191]
+]
