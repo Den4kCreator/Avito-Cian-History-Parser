@@ -13,7 +13,7 @@ ERROR_NOTIFICATION_SUBJECT = 'PARSING ERROR! (ОШИБКА ПАРСЕРА!): О�
 
 # PARSING PROCESS
 MAX_PAGES_COUNT = 5_000  # parsing pages from 1 to N
-NUM_PARALLEL_BROWSERS = 10   # parsing async N pages 
+NUM_PARALLEL_BROWSERS = 12   # parsing async N pages 
 
 
 # PARSE TIMESTAMP FORMAT

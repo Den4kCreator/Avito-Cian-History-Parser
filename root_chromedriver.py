@@ -48,6 +48,7 @@ class RootChromeDriver(ChromeDriver):
         self.opts.add_argument("--disable-extensions")
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
+        self.opts.add_argument('--disable-application-cache')
         # self.opts.add_argument('--enable-logging')
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.opts.add_experimental_option('useAutomationExtension', False)
@@ -58,24 +59,30 @@ class RootChromeDriver(ChromeDriver):
     #     return driver
         
     def _get_urban_new_ip(self):
-        try:
-            # click stop btn (change ip)
-            WebDriverWait(self, 10).until(
-                EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--pause"]'))
-            ).click()
-            sleep(5)
-        except TimeoutException:
-            # click start btn (change ip)
-            sleep(randrange(0, 7))
-            WebDriverWait(self, 10).until(
-                EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--play"]'))
-            ).click()
-    
-        # print new ip address
-        new_ip = WebDriverWait(self, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//span[@class="main-content__ip"]'))
-        ).text
-        print(f'[+]Get ip - {new_ip}')
+        for _ in range(5):
+            try:
+                # click stop btn (change ip)
+                WebDriverWait(self, 6).until(
+                    EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--pause"]'))
+                ).click()
+                sleep(5)
+            except TimeoutException:
+                # click start btn (change ip)
+                sleep(randrange(0, 7))
+                WebDriverWait(self, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--play"]'))
+                ).click()
+        
+            # print new ip address
+            try:
+                new_ip = WebDriverWait(self, 10).until(
+                    EC.presence_of_element_located((By.XPATH, '//span[@class="main-content__ip"]'))
+                ).text
+            except TimeoutException:
+                pass
+            else:
+                print(f'[+]Get ip - {new_ip}')
+                return
     
     def _load_urban_vpn(self):
         # load vpn
