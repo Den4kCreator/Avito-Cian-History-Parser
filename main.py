@@ -11,9 +11,9 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import urllib.request
-# import threading
-import asyncio
-from concurrent.futures.thread import ThreadPoolExecutor
+import threading
+# import asyncio
+# from concurrent.futures.thread import ThreadPoolExecutor
 # from concurrent.futures import as_completed
 
 # from hcaptcha_solver import hcaptcha_solver
@@ -48,8 +48,8 @@ NUM_PARALLEL_BROWSERS = NUM_PARALLEL_BROWSERS if NUM_PARALLEL_BROWSERS <= MAX_PA
 
 # cerate executor for async parsing
 # THREADING_LOCK = threading.Lock()
-THREAD_POOL_EXECUTOR = ThreadPoolExecutor(max_workers=NUM_PARALLEL_BROWSERS) 
-ASYNCIO_EVENT_LOOP = asyncio.get_event_loop()
+# THREAD_POOL_EXECUTOR = ThreadPoolExecutor(max_workers=NUM_PARALLEL_BROWSERS) 
+# ASYNCIO_EVENT_LOOP = asyncio.get_event_loop()
 
 
 def send_email_msg(body_msg, subject_msg, send_from, password, send_to):
@@ -276,13 +276,13 @@ def cian_parse(region_id: str, executor=None, loop=None):
     # init page urls with page_nums
     page_urls = []
 
-    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
-        tasks = []
-        for page_n, page_url in zip(page_n_list, page_url_list):
-            tasks.append(
-                loop.run_in_executor(executor, cian_parse_ads, page_n, page_url, collected_ads)
-            )
-        await asyncio.gather(*tasks)
+    # async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+    #     tasks = []
+    #     for page_n, page_url in zip(page_n_list, page_url_list):
+    #         tasks.append(
+    #             loop.run_in_executor(executor, cian_parse_ads, page_n, page_url, collected_ads)
+    #         )
+    #     await asyncio.gather(*tasks)
 
 
     # generate urls
@@ -293,28 +293,29 @@ def cian_parse(region_id: str, executor=None, loop=None):
         page_urls.append(
             [page_url, page_n])
     
-    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-    #     for page_url, page_n in page_urls_group:
-    #         threads = []
-    #         # for url in urls:
-    #         thread = threading.Thread(target=cian_parse_ads, args=(page_n, page_url, collected_ads))
-    #         threads.append(thread)
-    #         thread.start()
+    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=cian_parse_ads, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
         
-    #     for thread in threads:
-    #         thread.join()
+        for thread in threads:
+            thread.join()
+            
             # collect ads for every page
             # cian_parse_ads(page_n, page_url, collected_ads)
     
     # process_pages(page_urls, collected_ads)
             
-    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-        # unpack group and send to loop
-        page_n_list = [group[1] for group in page_urls_group]
-        page_url_list = [group[0] for group in page_urls_group]
+    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+    #     # unpack group and send to loop
+    #     page_n_list = [group[1] for group in page_urls_group]
+    #     page_url_list = [group[0] for group in page_urls_group]
         
-        loop.run_until_complete(
-            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
+    #     loop.run_until_complete(
+    #         scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
     logging.info(f'success end parsing for cian, region - {region_id}')
     return collected_ads
@@ -498,20 +499,20 @@ def avito_parse(region_id, loop=None, executor=None):
     # start function
     collected_ads = []    # container ads
 
-    async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
-        tasks = []
-        for page_n, page_url in zip(page_n_list, page_url_list):
-            tasks.append(
-                loop.run_in_executor(executor, process_page, page_n, page_url, collected_ads)
-            )
+    # async def scrape(page_n_list, page_url_list, collected_ads, executor, loop):
+    #     tasks = []
+    #     for page_n, page_url in zip(page_n_list, page_url_list):
+    #         tasks.append(
+    #             loop.run_in_executor(executor, process_page, page_n, page_url, collected_ads)
+    #         )
     
-    #     # for future in as_completed(tasks):
-    #     #     try:
-    #     #         future.result()
-    #     #     except Exception as ex:
-    #     #         print(f'future exception - {ex}')
-    #     #         continue
-        await asyncio.gather(*tasks)
+    # #     # for future in as_completed(tasks):
+    # #     #     try:
+    # #     #         future.result()
+    # #     #     except Exception as ex:
+    # #     #         print(f'future exception - {ex}')
+    # #     #         continue
+    #     await asyncio.gather(*tasks)
         
 
     def process_page(page_n, page_url, collected_ads):
@@ -569,25 +570,25 @@ def avito_parse(region_id, loop=None, executor=None):
     # create page urls 
     page_urls = []
 
-    page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
-    for page_n in range(1, MAX_PAGES_COUNT):
-        if page_n > 1:
-            page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
-        page_urls.append(
-            [page_url, page_n])
+    # page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
+    # for page_n in range(1, MAX_PAGES_COUNT):
+    #     if page_n > 1:
+    #         page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
+    #     page_urls.append(
+    #         [page_url, page_n])
     
     # start process urls (pages)
     # process pages
-    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-    #     for page_url, page_n in page_urls_group:
-    #         threads = []
-    #         # for url in urls:
-    #         thread = threading.Thread(target=process_page, args=(page_n, page_url, collected_ads))
-    #         threads.append(thread)
-    #         thread.start()
+    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+        for page_url, page_n in page_urls_group:
+            threads = []
+            # for url in urls:
+            thread = threading.Thread(target=process_page, args=(page_n, page_url, collected_ads))
+            threads.append(thread)
+            thread.start()
         
-    #     for thread in threads:
-    #         thread.join()
+        for thread in threads:
+            thread.join()
 
     
     # logging.info(f'success end parsing for avito, region {region_id}')
@@ -595,13 +596,13 @@ def avito_parse(region_id, loop=None, executor=None):
         
     # process_pages(page_urls, collected_ads)
 
-    for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
-        # unpack group and send to loop
-        page_n_list = [group[1] for group in page_urls_group]
-        page_url_list = [group[0] for group in page_urls_group]
+    # for page_urls_group in split_list(page_urls, NUM_PARALLEL_BROWSERS):
+    #     # unpack group and send to loop
+    #     page_n_list = [group[1] for group in page_urls_group]
+    #     page_url_list = [group[0] for group in page_urls_group]
         
-        loop.run_until_complete(
-            scrape(page_n_list, page_url_list, collected_ads, executor, loop))
+    #     loop.run_until_complete(
+    #         scrape(page_n_list, page_url_list, collected_ads, executor, loop))
 
     logging.info(f'success end parsing for avito, region {region_id}')
     return collected_ads
@@ -885,7 +886,7 @@ def main():
         # -- AVITO --
         avito_ads = []
         avito_ads.extend(
-            avito_parse(AVITO_REGIONS['Москва и МО'], executor=THREAD_POOL_EXECUTOR, loop=ASYNCIO_EVENT_LOOP)
+            avito_parse(AVITO_REGIONS['Москва и МО'], executor='', loop='')
         )
         logging.info(f'Found avito ads count - {len(avito_ads)}')
 
@@ -898,9 +899,9 @@ def main():
         cian_ads = []
         
         # extend cian parsed for Москва
-        cian_ads.extend(cian_parse(CIAN_REGIONS['Москва'], executor=THREAD_POOL_EXECUTOR, loop=ASYNCIO_EVENT_LOOP))
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Москва'], executor='', loop=''))
         # extend cian parsed for MO
-        cian_ads.extend(cian_parse(CIAN_REGIONS['Московская область'], executor=THREAD_POOL_EXECUTOR, loop=ASYNCIO_EVENT_LOOP))
+        cian_ads.extend(cian_parse(CIAN_REGIONS['Московская область'], executor='', loop=''))
         logging.info(f'Found cian ads count - {len(cian_ads)}')
 
         # update prices and views history - cian
