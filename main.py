@@ -36,14 +36,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     encoding='utf-8')
 
-# collect pages on avito and cian
-MAX_PAGES_COUNT = 10  # from 1 to N
 
 # create errors container
 ERRORS_CONTAINER = []
 
-# count parallel browsers
-NUM_PARALLEL_BROWSERS = 6
+# correct count parallel browsers
 NUM_PARALLEL_BROWSERS = NUM_PARALLEL_BROWSERS if NUM_PARALLEL_BROWSERS <= MAX_PAGES_COUNT else MAX_PAGES_COUNT
 
 # cerate executor for async parsing
