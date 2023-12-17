@@ -570,12 +570,12 @@ def avito_parse(region_id, loop=None, executor=None):
     # create page urls 
     page_urls = []
 
-    # page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
-    # for page_n in range(1, MAX_PAGES_COUNT):
-    #     if page_n > 1:
-    #         page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
-    #     page_urls.append(
-    #         [page_url, page_n])
+    page_url = f'https://www.avito.ru/{region_id}/zemelnye_uchastki?cd=1&p=1'
+    for page_n in range(1, MAX_PAGES_COUNT):
+        if page_n > 1:
+            page_url = page_url.replace(f'&p={page_n-1}', f'&p={page_n}')
+        page_urls.append(
+            [page_url, page_n])
     
     # start process urls (pages)
     # process pages
