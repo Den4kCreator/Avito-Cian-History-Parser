@@ -1,20 +1,19 @@
-# import re
-# from os import getenv
-# from os import listdir
-# from os.path import exists as path_exists
-# import subprocess
-# from time import sleep
+from time import sleep
+from random import randrange
 
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import (NoSuchElementException, TimeoutException)
 from selenium.webdriver import Chrome as ChromeDriver
-from selenium.webdriver import Remote as RemoteDriver
+# from selenium.webdriver import Remote as RemoteDriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 
-# from fake_useragent import UserAgent as UA
 
 
-class RootChromeDriver:
+class RootChromeDriver(ChromeDriver):
     ''' object for settings a chrome driver '''
     def __init__(self):
         # appdata_path = getenv('LOCALAPPDATA')
@@ -29,11 +28,17 @@ class RootChromeDriver:
         #     self.profile_path = ''
         self.opts = ChromeOptions()
         self._set_my_config()   # setting opts
+
+    def _set_extensions(self):
+        # INIT URBAN SHIELD VPN
+        if '--disable-extensions' in self.opts.arguments:
+            print('[!]Delete "disable extensions" argument from chrome options')
+            self.opts.arguments.remove('--disable-extensions')
+        self.opts.add_extension(r'urban_shield_vpn_6_0_6.crx')
         
     def _set_my_config(self) -> None:
         ''' adding the params to self.opts object '''
-        # initialize
-        self.opts.add_argument("--headless")
+        self.opts.add_argument("--headless=new")
         self.opts.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
         self.opts.add_argument("--disable-notifications")
         self.opts.add_argument("--no-sandbox")
@@ -43,77 +48,115 @@ class RootChromeDriver:
         self.opts.add_argument("--disable-extensions")
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
+        # self.opts.add_argument('--enable-logging')
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.opts.add_experimental_option('useAutomationExtension', False)
     
-    def _init_remote_driver(self, remote_url):
-        # find jar file
-        # servers_jar = list(filter(lambda s: s.endswith('.jar'), listdir('.'))) 
-        # if not servers_jar:
-        #     raise FileNotFoundError ('Selenium Jar server is not found')
-        # jar_path = servers_jar[0]
+    # def _init_remote_driver(self, remote_url):
+    #     # create remote driver
+    #     driver = RemoteDriver(command_executor=remote_url, options=self.opts)
+    #     return driver
         
-        # # start jar for windows
-        # cmd = f'java -jar {jar_path} standalone'
-        # process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.DETACHED_PROCESS, text=True)
-        # # Wait for the desired information in the output
-        # attempt = 0
-        # max_attempts = 10
-        # delay = 10
-        # while attempt < max_attempts:
-        #     output = process.stdout
-        #     # if output == '':
-        #     #     break
-        #     print(output)
-        #     if output:
-        #         # Check for the presence of the IP address in the output
-        #         match = re.search(r'http://\d+\.\d+\.\d+\.\d+:\d+', output)
-        #         if match:
-        #             remote_url = match[0]
-        #             print(f'[+] Found IP address: {remote_url}')
-        #             break
-        #     sleep(delay)
-        # else:
-        #     raise ValueError (f'Not found open ip address and port after {max_attempts} attempts')
+    def _get_urban_new_ip(self):
+        try:
+            # click stop btn (change ip)
+            WebDriverWait(self, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--pause"]'))
+            ).click()
+            sleep(5)
+        except TimeoutException:
+            # click start btn (change ip)
+            sleep(randrange(0, 7))
+            WebDriverWait(self, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--play"]'))
+            ).click()
+    
+        # print new ip address
+        new_ip = WebDriverWait(self, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//span[@class="main-content__ip"]'))
+        ).text
+        print(f'[+]Get ip - {new_ip}')
+    
+    def _load_urban_vpn(self):
+        # load vpn
+        self.get('chrome-extension://almalgbpmcfpdaopimbdchdliminoign/popup/index.html#/consent/main')
         
-        # Wait for the process to finish
-        # process.wait()
-        
-        # if process.returncode != 0:
-        #     raise ValueError(f'Run jar for windows was finished with error - {process.returncode}')
-        
-        # output, error = process.communicate()
-        # output, error = output.decode('utf-8'), error.decode('utf-8')
-        # print(output)
-        # remote_url = re.search(r'http://\d+\.\d+\.\d+\.\d+:\d+', output)[0]
-        # if error:
-        #     
-        # print('[+]Successful jar runned')
+        accept_rules_func = lambda: WebDriverWait(self, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[text()=' Agree & Continue ']"))
+        ).click()
 
-        # create remote driver
-        driver = RemoteDriver(command_executor=remote_url, options=self.opts)
-        return driver
+        for _ in range(5):
+            # accept first window
+            try:
+               accept_rules_func()
+            except TimeoutException:
+                break
+            # wait open new tab
+            for _ in range(5):
+                if len(self.window_handles) == 1:
+                    sleep(2)
+                else:
+                    break
+            else:
+                # switch on first tab and close second (additional)
+                # self.switch_to.window(self.window_handles[1])
+                # sleep(2)
+                # self.close()
+                # sleep(2)
+                self.switch_to.window(self.window_handles[0])
+
+        for _ in range(5):
+            try:
+                # accept two window
+                accept_rules_func()
+                sleep(3)
+            except TimeoutException:
+                break
+    
+        # ok thanks click
+        WebDriverWait(self, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[text()=' Ok, thanks ']"))
+        ).click()
+
+        # clean additional windows
+        while len(self.window_handles) > 1:
+            self.switch_to.window(self.window_handles[1])
+            sleep(2)
+            self.close()
+            sleep(2)
+            self.switch_to.window(self.window_handles[0])
+        
 
 
-    def _init_local_driver(self):
+    
+    def _urban_get_ip(self):
+        self._load_urban_vpn()
+        self._get_urban_new_ip()
+
+    def get_rootdriver(self):
+        # set extensions
+        self._set_extensions()
+        
+        # en lang for hcaptcha_solver
         self.opts.add_experimental_option('prefs', {'intl.accept_languages': 'en,en_US'})
         # self.opts.add_experimental_option('prefs', {'intl.accept_languages': 'ru,ru_RU'})
 
         # if self.profile_path:
         #     self.opts.add_argument(f"--user-data-dir={self.profile_path}")
+        
+        super().__init__(options=self.opts, service=ChromeService(ChromeDriverManager().install()))
+        # driver = ChromeDriver(options=self.opts, service=service)
+        
+        # driver settings
+        self.implicitly_wait(5)
+        self.maximize_window()
 
-        driver_path = ChromeDriverManager().install()
-        service = ChromeService(driver_path)
-
-        driver = ChromeDriver(options=self.opts, service=service)
-        # setting driver
-        driver.implicitly_wait(5)
-        driver.maximize_window()
-        return driver
+        # additional loads
+        self._urban_get_ip()
+        return self
     
 if __name__ == '__main__':
-    root_driver = RootChromeDriver()
-    driver = root_driver._init_local_driver()
+    root_driver = RootChromeDriver().get_rootdriver()
     input('wait..')
-    driver.close()
-    driver.quit()
+    root_driver.close()
+    root_driver.quit()
