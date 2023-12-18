@@ -14,6 +14,7 @@ ERROR_NOTIFICATION_SUBJECT = 'PARSING ERROR! (ОШИБКА ПАРСЕРА!): О�
 # PARSING PROCESS
 MAX_PAGES_COUNT = 5_000  # parsing pages from 1 to N
 NUM_PARALLEL_BROWSERS = 12   # parsing async N pages 
+AVITO_ADS_ON_ONE_PAGE = 55    # count ads on avito page
 
 
 # PARSE TIMESTAMP FORMAT
