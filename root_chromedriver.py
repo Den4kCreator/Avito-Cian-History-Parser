@@ -123,19 +123,22 @@ class RootChromeDriver(ChromeDriver):
                 # self.close()
                 # sleep(2)
                 self.switch_to.window(self.window_handles[0])
-
-        for _ in range(5):
+            
+            # accept two window and click ok thanks
+            for _ in range(5):
+                try:
+                    # accept two window
+                    accept_rules_func()
+                    sleep(3)
+                except TimeoutException:
+                    break
             try:
-                # accept two window
-                accept_rules_func()
-                sleep(3)
+                # ok thanks click
+                WebDriverWait(self, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[text()=' Ok, thanks ']"))
+                ).click()
             except TimeoutException:
-                break
-    
-        # ok thanks click
-        WebDriverWait(self, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[text()=' Ok, thanks ']"))
-        ).click()
+                pass
 
         # clean additional windows
         while len(self.window_handles) > 1:

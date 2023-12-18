@@ -9,7 +9,8 @@ env
 main (old with comments).py
 cfg.py
 execution.log
-log.log
+old_log.log
+test.log
 avito_history.csv
 cian_history.csv
 avito_total.csv
