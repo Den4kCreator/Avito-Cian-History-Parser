@@ -40,7 +40,7 @@ class RootChromeDriver(ChromeDriver):
         
     def _set_my_config(self) -> None:
         ''' adding the params to self.opts object '''
-        # self.opts.add_argument("--headless=new")
+        self.opts.add_argument("--headless=new")
         self.opts.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
         self.opts.add_argument("--disable-notifications")
         self.opts.add_argument("--no-sandbox")
