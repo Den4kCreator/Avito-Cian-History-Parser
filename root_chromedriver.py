@@ -11,6 +11,8 @@ from selenium.webdriver import Chrome as ChromeDriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 
+from cfg import NUM_PARALLEL_BROWSERS
+
 
 
 class RootChromeDriver(ChromeDriver):
@@ -38,7 +40,7 @@ class RootChromeDriver(ChromeDriver):
         
     def _set_my_config(self) -> None:
         ''' adding the params to self.opts object '''
-        self.opts.add_argument("--headless=new")
+        # self.opts.add_argument("--headless=new")
         self.opts.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
         self.opts.add_argument("--disable-notifications")
         self.opts.add_argument("--no-sandbox")
@@ -48,7 +50,7 @@ class RootChromeDriver(ChromeDriver):
         self.opts.add_argument("--disable-extensions")
         self.opts.add_argument("--disable-popup-blocking")
         self.opts.add_argument("--disable-plugins-discovery")
-        self.opts.add_argument('--disable-application-cache')
+        # self.opts.add_argument('--disable-application-cache')
         # self.opts.add_argument('--enable-logging')
         self.opts.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.opts.add_experimental_option('useAutomationExtension', False)
@@ -78,7 +80,7 @@ class RootChromeDriver(ChromeDriver):
                 sleep(5)
             except TimeoutException:
                 # click start btn (change ip)
-                sleep(randrange(0, 7))
+                sleep(randrange(0, NUM_PARALLEL_BROWSERS))
                 WebDriverWait(self, 10).until(
                     EC.element_to_be_clickable((By.XPATH, '//div[@class="play-button play-button--play"]'))
                 ).click()
@@ -105,7 +107,7 @@ class RootChromeDriver(ChromeDriver):
         for _ in range(5):
             # accept first window
             try:
-               accept_rules_func()
+                accept_rules_func()
             except TimeoutException:
                 break
             except StaleElementReferenceException:
@@ -172,8 +174,13 @@ class RootChromeDriver(ChromeDriver):
 
         # if self.profile_path:
         #     self.opts.add_argument(f"--user-data-dir={self.profile_path}")
+
         
-        super().__init__(options=self.opts, service=ChromeService(ChromeDriverManager().install()))
+
+        service = ChromeService(ChromeDriverManager().install())
+        # sleep for control access to chromedriver app (or .exe)
+        sleep(randrange(1, NUM_PARALLEL_BROWSERS))
+        super().__init__(options=self.opts, service=service)
         # driver = ChromeDriver(options=self.opts, service=service)
         
         # driver settings
